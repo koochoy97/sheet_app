@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.DS_Store
+.idea/
+.vscode/
+yarn-*.log*
+npm-*.log*
+pnpm-*.log*
