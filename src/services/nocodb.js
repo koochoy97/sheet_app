@@ -1,27 +1,31 @@
-export function buildNocoUrl(baseUrl, { clientFilter, ALL, viewId }) {
+export function buildNocoUrl(baseUrl, { clientFilter, ALL }) {
   const u = new URL(baseUrl)
-  u.searchParams.set('offset', '0')
-  u.searchParams.set('limit', '500')
-  // Order by celebration_date DESC (newest first) per NocoDB v2
-  try {
-    const sortSpec = [{ field: 'celebration_date', order: 'desc' }]
-    u.searchParams.set('sortArr', JSON.stringify(sortSpec))
-    // Some deployments also accept fallback params
-    u.searchParams.set('sort', 'celebration_date')
-    u.searchParams.set('order', 'desc')
-  } catch {}
+  u.searchParams.append('order', 'id.desc')
   if (clientFilter && clientFilter !== ALL) {
-    u.searchParams.set('where', `(client,eq,${clientFilter})`)
-  } else if (viewId) {
-    u.searchParams.set('viewId', viewId)
+    const numericId = Number(clientFilter)
+    if (Number.isFinite(numericId)) {
+      u.searchParams.set('client_id', `eq.${numericId}`)
+    }
   }
   return u
 }
 
 export function mapRecordToRow(rec) {
+  const rawId = rec?.Id ?? rec?.id
+  const recordId = rawId == null ? null : Number(rawId)
+  const rowId = Number.isFinite(recordId) ? recordId : `api_${cryptoRandom()}`
+  const rawClientId = rec?.client_id ?? null
+  const numericClientId = Number(rawClientId)
+  const clientId = Number.isFinite(numericClientId) ? numericClientId : (rawClientId ?? null)
+  const lineaNegocio = normalizeLineaNegocio(
+    rec?.lineas_negocio_ids ??
+    rec?.lineas_negocio ??
+    rec?.linea_negocio ?? []
+  )
   return {
-    id: `api_${(rec?.id ?? rec?.Id ?? cryptoRandom())}`,
-    recordId: (rec?.id ?? rec?.Id ?? null),
+    id: rowId,
+    recordId: Number.isFinite(recordId) ? recordId : null,
+    clientId,
     company: rec.company ?? '',
     fecha: rec.celebration_date ?? '',
     status: rec.status ?? '',
@@ -32,6 +36,8 @@ export function mapRecordToRow(rec) {
     score: typeof rec.score === 'number' ? rec.score : (rec.score ?? ''),
     feedback: rec.feedback ?? '',
     cliente: rec.client ?? '',
+    lineaNegocio,
+    created_at: rec?.created_at ?? rec?.createdAt ?? '',
   }
 }
 
@@ -43,52 +49,104 @@ function cryptoRandom() {
   }
 }
 
-export async function updateNocoRecord(baseUrl, token, recordId, payload, signal) {
-  // NocoDB v2 PATCH: /api/v2/tables/{tableId}/records with body [{ Id, ...fields }]
-  const m = /tables\/([^/]+)\/records/.exec(baseUrl)
-  const tableId = m ? m[1] : null
-  if (!tableId || recordId == null) throw new Error('Missing tableId or recordId')
-  const u = new URL(baseUrl)
-  u.pathname = `/api/v2/tables/${tableId}/records`
-  const body = [{ id: typeof recordId === 'string' ? Number(recordId) : recordId, ...payload }]
+function normalizeLineaNegocio(value) {
+  if (Array.isArray(value)) {
+    const seen = new Set()
+    const list = []
+    for (const item of value) {
+      const num = Number(item)
+      if (!Number.isFinite(num)) continue
+      if (seen.has(num)) continue
+      seen.add(num)
+      list.push(num)
+    }
+    list.sort((a, b) => a - b)
+    return list
+  }
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      if (Array.isArray(parsed)) return normalizeLineaNegocio(parsed)
+    } catch {}
+    const splitted = value.split(',').map(v => Number(v.trim())).filter(Number.isFinite)
+    if (splitted.length) {
+      const unique = Array.from(new Set(splitted)).sort((a, b) => a - b)
+      return unique
+    }
+  }
+  return []
+}
 
-  // Debug
-  console.log('[NocoDB][PATCH]', u.toString(), body, {
-    headers: { 'Content-Type': 'application/json', 'xc-token': token ? token.slice(0,4)+'...' : 'missing' },
-    method: 'PATCH'
-  })
+export async function updateNocoRecord(baseUrl, token, recordId, payload, signal) {
+  if (recordId == null) throw new Error('Missing recordId')
+  const numericId = typeof recordId === 'number' ? recordId : Number(recordId)
+  if (!Number.isFinite(numericId)) throw new Error('Invalid recordId')
+  const u = new URL(baseUrl)
+  u.searchParams.set('id', `eq.${numericId}`)
+
+  const body = { ...payload }
+
+  const headers = {
+    'Content-Profile': 'prospection',
+    'Content-Type': 'application/json',
+    Prefer: 'return=representation',
+  }
+
+  console.log('[REST][PATCH] request', { url: u.toString(), headers, body })
 
   const res = await fetch(u.toString(), {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'xc-token': token },
+    headers,
     body: JSON.stringify(body),
     signal,
   })
-  if (!res.ok) throw new Error(`Update failed HTTP ${res.status}`)
+  if (!res.ok) {
+    let info = ''
+    try { info = await res.text() } catch {}
+    throw new Error(`Update failed HTTP ${res.status}${info ? `: ${info}` : ''}`)
+  }
   return res.json().catch(() => ({}))
 }
 
 export async function createNocoRecord(baseUrl, token, payload, signal) {
-  // POST /api/v2/tables/{tableId}/records with object payload
-  const m = /tables\/([^/]+)\/records/.exec(baseUrl)
-  const tableId = m ? m[1] : null
-  if (!tableId) throw new Error('Missing tableId')
   const u = new URL(baseUrl)
-  u.pathname = `/api/v2/tables/${tableId}/records`
-  console.log('[NocoDB][CREATE] POST', u.toString(), payload, {
-    headers: { 'Content-Type': 'application/json', 'xc-token': token ? token.slice(0,4)+'...' : 'missing' }
-  })
+  const headers = {
+    'Content-Profile': 'prospection',
+    'Content-Type': 'application/json',
+    Prefer: 'return=representation',
+  }
+  console.log('[REST][POST] request', { url: u.toString(), headers, body: payload })
   const res = await fetch(u.toString(), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'xc-token': token },
+    headers,
     body: JSON.stringify(payload),
     signal,
   })
-  console.log('[NocoDB][CREATE] status', res.status)
-  if (!res.ok) throw new Error(`Create failed HTTP ${res.status}`)
+  console.log('[REST][POST] status', res.status)
+  if (!res.ok) {
+    let info = ''
+    try { info = await res.text() } catch {}
+    throw new Error(`Create failed HTTP ${res.status}${info ? `: ${info}` : ''}`)
+  }
   const data = await res.json().catch(() => ({}))
-  console.log('[NocoDB][CREATE] response', data)
-  // Response can be object or array; normalize to first object
+  console.log('[REST][POST] response', data)
   const rec = Array.isArray(data) ? data[0] : data
   return rec
+}
+
+export async function deleteNocoRecords(baseUrl, token, ids, signal) {
+  const numericIds = (ids || []).map(id => typeof id === 'number' ? id : Number(id)).filter(id => Number.isFinite(id))
+  if (!numericIds.length) return { ok: true, deleted: 0 }
+  const u = new URL(baseUrl)
+  u.searchParams.set('id', `in.(${numericIds.join(',')})`)
+  const headers = { 'Content-Profile': 'prospection' }
+  console.log('[REST][DELETE] request', { url: u.toString(), headers })
+  const res = await fetch(u.toString(), {
+    method: 'DELETE',
+    headers,
+    signal,
+  })
+  console.log('[REST][DELETE] status', res.status)
+  if (!res.ok) throw new Error(`Delete failed HTTP ${res.status}`)
+  return { ok: true, deleted: numericIds.length }
 }

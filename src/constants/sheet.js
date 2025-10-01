@@ -1,12 +1,9 @@
 export const STATUS_OPTIONS = [
-  'Pendiente',
-  'En curso',
-  'Ganado',
-  'Perdido',
   'Completada',
   'No show',
+  'Pactada',
+  'Concluida',
   'Reprogramada',
-  'Cancelada',
 ]
 
 export const COLUMNS = [
@@ -19,8 +16,7 @@ export const COLUMNS = [
   { key: 'empleados', label: '# Empleados' },
   { key: 'score', label: 'Score' },
   { key: 'feedback', label: 'Feedback' },
-  { key: 'cliente', label: 'Cliente' },
+  { key: 'lineaNegocio', label: 'Línea de negocio' },
 ]
 
 export const ALL_CLIENTS = '__ALL__'
-
