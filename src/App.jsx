@@ -5,8 +5,7 @@ export default function App() {
   return (
     <div className="app">
       <div className="sheet-container">
-        <h1 style={{marginTop: 0}}>Tabla tipo Google Sheet</h1>
-        <p>Campos: Company, Fecha de celebración, Status, KDM, Título del KDM, Industria, # Empleados, Score.</p>
+        <h1 className="sheet-heading">Registro de reuniones obtenidas</h1>
         <Sheet />
       </div>
     </div>

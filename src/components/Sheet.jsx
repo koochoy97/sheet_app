@@ -1,14 +1,40 @@
 import React from 'react'
+import { Toaster, toast } from 'react-hot-toast'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import ClientFilter from './ClientFilter'
 import SheetTable from './SheetTable'
+import DateFilter from './DateFilter'
 import { useNocoDB } from '../hooks/useNocoDB'
 import { COLUMNS as columns, ALL_CLIENTS, STATUS_OPTIONS } from '../constants/sheet'
-import { createNocoRecord, mapRecordToRow } from '../services/nocodb'
+import { createNocoRecord, deleteNocoRecords, mapRecordToRow, updateNocoRecord } from '../services/nocodb'
 import CreateSlide from './CreateSlide'
 
-const newId = () => `${Date.now()}_${Math.random().toString(36).slice(2,8)}`
+const READ_BASE_URL = 'https://rest.wearesiete.com/siete_service_meetings'
+const WRITE_BASE_URL = READ_BASE_URL
+
+const REQUIRED_FIELDS = [
+  { key: 'company', label: 'Company' },
+  { key: 'fecha', label: 'Fecha de celebración' },
+  { key: 'status', label: 'Status' },
+  { key: 'kdm', label: 'KDM' },
+  { key: 'tituloKdm', label: 'Título del KDM' },
+]
+
+const sanitizeLineaNegocio = (value) => {
+  if (!Array.isArray(value)) return []
+  const seen = new Set()
+  const normalized = []
+  for (const item of value) {
+    const num = Number(item)
+    if (!Number.isFinite(num)) continue
+    if (seen.has(num)) continue
+    seen.add(num)
+    normalized.push(num)
+  }
+  normalized.sort((a, b) => a - b)
+  return normalized
+}
 
 function toCSV(rows) {
   const header = columns.map(c => c.label)
@@ -28,25 +54,81 @@ function toCSV(rows) {
 }
 
 export default function Sheet() {
-  const { rows, setRows, loading, clients, clientFilter, setClientFilter, updateRemoteCell, pending } = useNocoDB({
-    baseUrl: 'https://nocodb.wearesiete.com/api/v2/tables/mou2qt44g8tdxph/records',
-    viewId: 'vwrsh3l1tczjs0hl',
+  const { rows, setRows, loading, clients, clientFilter, setClientFilter, defaultClientId, clientLines } = useNocoDB({
+    baseUrl: READ_BASE_URL,
     ALL: ALL_CLIENTS,
   })
 
   const [selectedIds, setSelectedIds] = React.useState(new Set())
   const [selectionLocked, setSelectionLocked] = React.useState(false)
-  // Default client-side sort: celebration date (fecha) descending (newest first)
-  const [sort, setSort] = React.useState({ key: 'fecha', dir: 'desc' }) // dir: 'asc' | 'desc' | null
+  // Default client-side sort: celebration date descending (newest first)
+  const [sort, setSort] = React.useState({ key: 'id', dir: 'desc' }) // dir: 'asc' | 'desc' | null
   const [createOpen, setCreateOpen] = React.useState(false)
   const [createSaving, setCreateSaving] = React.useState(false)
   const [createForm, setCreateForm] = React.useState({
-    company: '', fecha: '', status: '', kdm: '', tituloKdm: '', industria: '', empleados: '', score: '', feedback: '', cliente: ''
+    company: '', fecha: '', status: '', kdm: '', tituloKdm: '', industria: '', empleados: '', score: '', feedback: '', cliente: '', lineaNegocio: []
   })
+  const [createErrors, setCreateErrors] = React.useState({})
   // Filters
   const [statusFilter, setStatusFilter] = React.useState('')
-  const [scoreFilter, setScoreFilter] = React.useState('') // '' | 'none' | '0'..'10'
+  const [scoreFilter, setScoreFilter] = React.useState('') // '' | 'none' | '<score>'
+  const [dateFilter, setDateFilter] = React.useState({ label: 'Todo el tiempo', start: null, end: null })
   const [companyQuery, setCompanyQuery] = React.useState('')
+  const [pending, setPending] = React.useState(new Set())
+
+  const clientOptions = React.useMemo(() => clients.map(opt => {
+    if (typeof opt === 'string') {
+      const isAll = opt === ALL_CLIENTS
+      return { value: opt, label: isAll ? 'Todos los clientes' : opt, id: null }
+    }
+    const rawValue = opt?.value ?? opt?.id ?? opt?.label ?? ''
+    const value = String(rawValue)
+    const label = opt?.label ?? (value === ALL_CLIENTS ? 'Todos los clientes' : value)
+    const id = opt?.id != null ? opt.id : (opt?.value != null && /^\d+$/.test(String(opt.value)) ? Number(opt.value) : null)
+    return { value, label, id }
+  }), [clients])
+
+  const clientFilterOptions = React.useMemo(() => {
+    const seen = new Set()
+    const opts = []
+    for (const opt of clientOptions) {
+      if (!opt.value || seen.has(opt.value)) continue
+      seen.add(opt.value)
+      opts.push(opt)
+    }
+    return opts
+  }, [clientOptions])
+
+  const clientIdMap = React.useMemo(() => {
+    const map = new Map()
+    for (const opt of clientOptions) {
+      const id = opt.id ?? (opt.value && /^\d+$/.test(opt.value) ? Number(opt.value) : null)
+      if (opt.value) map.set(opt.value, id)
+      if (opt.label) map.set(opt.label, id)
+      if (id != null) map.set(String(id), id)
+    }
+    return map
+  }, [clientOptions])
+
+  const resolveClientSelection = React.useCallback((formLabel) => {
+    const trimmed = (formLabel ?? '').trim()
+    if (trimmed) {
+      const byLabel = clientOptions.find(opt => opt.label === trimmed)
+      if (byLabel) return { label: byLabel.label, id: byLabel.id ?? clientIdMap.get(byLabel.value) ?? null }
+    }
+    if (clientFilter) {
+      const byValue = clientOptions.find(opt => opt.value === clientFilter)
+      if (byValue) return { label: byValue.label, id: byValue.id ?? clientIdMap.get(byValue.value) ?? null }
+    }
+    if (trimmed) return { label: trimmed, id: clientIdMap.get(trimmed) ?? null }
+    return { label: '', id: null }
+  }, [clientOptions, clientIdMap, clientFilter])
+
+  const getSelectedClientLabel = React.useCallback(() => {
+    if (!clientFilter) return ''
+    const opt = clientOptions.find(o => o.value === clientFilter)
+    return opt?.label ?? ''
+  }, [clientFilter, clientOptions])
   const toggleRow = (id) => {
     setSelectedIds(prev => {
       const next = new Set(prev)
@@ -69,6 +151,7 @@ export default function Sheet() {
     const id = Array.from(selectedIds)[0]
     const row = rows.find(r => r.id === id)
     if (!row) return
+    const selectedLabel = getSelectedClientLabel()
     setCreateForm({
       company: row.company || '',
       fecha: row.fecha || '',
@@ -79,11 +162,13 @@ export default function Sheet() {
       empleados: row.empleados || '',
       score: row.score === 0 ? 0 : (row.score || ''),
       feedback: row.feedback || '',
-      cliente: (clientFilter === ALL_CLIENTS ? (row.cliente || '') : clientFilter)
+      cliente: (clientFilter === ALL_CLIENTS ? (row.cliente || '') : (selectedLabel || row.cliente || '')),
+      lineaNegocio: sanitizeLineaNegocio(row.lineaNegocio || []),
     })
     // Keep current selection, but lock selection changes while the slider is open
     setSelectionLocked(true)
     setCreateOpen(true)
+    setCreateErrors({})
   }
 
   const addRow = () => {
@@ -91,12 +176,20 @@ export default function Sheet() {
     if (selectedIds.size > 0) setSelectedIds(new Set())
     setSelectionLocked(true)
     // Open slide-over to create new record
-    setCreateForm({ company: '', fecha: '', status: '', kdm: '', tituloKdm: '', industria: '', empleados: '', score: '', feedback: '', cliente: (clientFilter === ALL_CLIENTS ? '' : clientFilter) })
+    const selectedLabel = getSelectedClientLabel()
+    setCreateForm({ company: '', fecha: '', status: '', kdm: '', tituloKdm: '', industria: '', empleados: '', score: '', feedback: '', cliente: selectedLabel, lineaNegocio: [] })
+    setCreateErrors({})
     setCreateOpen(true)
   }
 
   const updateCell = (id, key, value) => {
-    const v = key === 'score' && value !== '' ? Number(value) : value
+    let v = value
+    if (key === 'score') {
+      v = value === '' || value === null || value === undefined ? '' : Number(value)
+      if (!Number.isFinite(v)) v = ''
+    } else if (key === 'lineaNegocio') {
+      v = sanitizeLineaNegocio(Array.isArray(value) ? value : [])
+    }
     setRows(prev => prev.map(r => r.id === id ? { ...r, [key]: v } : r))
   }
 
@@ -111,18 +204,85 @@ export default function Sheet() {
     URL.revokeObjectURL(url)
   }
 
-  const removeSelected = () => {
-    setRows(prev => prev.filter(r => !selectedIds.has(r.id)))
-    setSelectedIds(new Set())
-  }
+  const removeSelected = React.useCallback(async () => {
+    if (!selectedIds.size) return
+    try {
+      setSelectionLocked(true)
+      const token = import.meta.env.VITE_NOCODB_TOKEN
+      if (!token) {
+        toast.error('Falta token de autenticación')
+        return
+      }
+      const rowsToDelete = rows.filter(r => selectedIds.has(r.id))
+      const ids = rowsToDelete
+        .map(r => (typeof r.recordId === 'number' ? r.recordId : (typeof r.id === 'number' ? r.id : Number(r.recordId))))
+        .filter(id => Number.isFinite(id))
+      if (ids.length) {
+        await deleteNocoRecords(WRITE_BASE_URL, token, ids)
+      }
+      setRows(prev => prev.filter(r => !selectedIds.has(r.id)))
+      setSelectedIds(new Set())
+      toast.success('Eliminado correctamente')
+    } catch (e) {
+      console.warn('[REST][DELETE] error', e)
+      toast.error(`Error al eliminar: ${e?.message || 'fallo'}`)
+    } finally {
+      setSelectionLocked(false)
+    }
+  }, [rows, selectedIds])
 
-  // Toasts
-  const [toasts, setToasts] = React.useState([])
-  const enqueueToast = (msg) => {
-    const id = `${Date.now()}_${Math.random().toString(36).slice(2,8)}`
-    setToasts(prev => [...prev, { id, msg }])
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 2000)
-  }
+  React.useEffect(() => {
+    if (!clientFilterOptions.length) return
+    setClientFilter(current => {
+      if (current && clientFilterOptions.some(opt => opt.value === current)) return current
+      if (defaultClientId && clientFilterOptions.some(opt => opt.value === defaultClientId)) return defaultClientId
+      if (current) return current
+      return clientFilterOptions[0]?.value ?? ALL_CLIENTS
+    })
+  }, [clientFilterOptions, defaultClientId, setClientFilter])
+
+  const statusOptions = React.useMemo(() => {
+    const present = new Set()
+    for (const row of rows) {
+      const val = (row.status ?? '').trim()
+      if (val) present.add(val)
+    }
+    const filtered = STATUS_OPTIONS.filter(opt => present.has(opt))
+    return (filtered.length ? filtered : STATUS_OPTIONS).map(opt => ({ value: opt, label: opt }))
+  }, [rows])
+
+  const scoreOptions = React.useMemo(() => {
+    const numericSet = new Set()
+    let hasEmpty = false
+    for (const row of rows) {
+      const val = row.score
+      if (val === '' || val === null || val === undefined) {
+        hasEmpty = true
+        continue
+      }
+      const num = Number(val)
+      if (Number.isFinite(num)) numericSet.add(num)
+    }
+    const sorted = Array.from(numericSet).sort((a,b)=>a-b).map(n => String(n))
+    return { values: sorted, hasEmpty }
+  }, [rows])
+
+  const validateCreateForm = React.useCallback(() => {
+    const nextErrors = {}
+    for (const field of REQUIRED_FIELDS) {
+      const value = createForm[field.key]
+      const normalized = typeof value === 'number' ? value : (value ?? '').toString().trim()
+      if (normalized === '') {
+        nextErrors[field.key] = `${field.label} es obligatorio`
+      }
+    }
+    setCreateErrors(nextErrors)
+    if (Object.keys(nextErrors).length > 0) {
+      toast.error('Completa los campos obligatorios')
+      return false
+    }
+    return true
+  }, [createForm])
 
   // Track last-saved values to avoid PATCH if unchanged
   const lastSaved = React.useRef(new Map())
@@ -131,6 +291,10 @@ export default function Sheet() {
       if (val === '' || val === null || val === undefined) return ''
       const n = Number(val)
       return Number.isFinite(n) ? n : val
+    }
+    if (key === 'lineaNegocio') {
+      const sanitized = sanitizeLineaNegocio(Array.isArray(val) ? val : [])
+      return JSON.stringify(sanitized)
     }
     return (val ?? '').toString()
   }, [])
@@ -149,6 +313,90 @@ export default function Sheet() {
     }
     prevLoading.current = loading
   }, [loading, rows])
+
+  const handleCellBlur = React.useCallback(async (row, key, value) => {
+    const mapKey = `${row.id}:${key}`
+    const normVal = normalize(key, value)
+    const saved = lastSaved.current.get(mapKey)
+    if (saved === normVal) return
+    const recordIdRaw = row.recordId ?? row.Id ?? row.id
+    const recordId = typeof recordIdRaw === 'number' ? recordIdRaw : Number(recordIdRaw)
+    if (!Number.isFinite(recordId)) {
+      toast.error('Registro sin Id válido')
+      return
+    }
+    const token = import.meta.env.VITE_NOCODB_TOKEN
+    if (!token) {
+      toast.error('Falta token de autenticación')
+      return
+    }
+    const baseClientId = row.clientId ?? clientIdMap.get(row.cliente) ?? null
+    const payload = {
+      company: row.company ?? '',
+      client: row.cliente ?? '',
+      celebration_date: row.fecha ?? '',
+      status: row.status ?? '',
+      kdm: row.kdm ?? '',
+      kdm_title: row.tituloKdm ?? '',
+      industry: row.industria ?? '',
+      employers_quantity: row.empleados ?? '',
+      score: row.score === '' ? null : (row.score ?? null),
+      feedback: row.feedback ?? '',
+      client_id: baseClientId,
+    }
+    payload.lineas_negocio_ids = sanitizeLineaNegocio(row.lineaNegocio || [])
+    switch (key) {
+      case 'company': payload.company = value ?? '' ; break
+      case 'cliente': payload.client = value ?? '' ; break
+      case 'fecha': payload.celebration_date = value ?? '' ; break
+      case 'status': payload.status = value ?? '' ; break
+      case 'kdm': payload.kdm = value ?? '' ; break
+      case 'tituloKdm': payload.kdm_title = value ?? '' ; break
+      case 'industria': payload.industry = value ?? '' ; break
+      case 'empleados': payload.employers_quantity = value ?? '' ; break
+      case 'score': {
+        if (value === '' || value == null) payload.score = null
+        else {
+          const num = Number(value)
+          payload.score = Number.isFinite(num) ? num : null
+        }
+        break
+      }
+      case 'feedback': payload.feedback = value ?? '' ; break
+      case 'lineaNegocio': payload.lineas_negocio_ids = sanitizeLineaNegocio(Array.isArray(value) ? value : []) ; break
+      default: break
+    }
+    let clientSelection = resolveClientSelection(payload.client)
+    if (!clientSelection.label && row.cliente) {
+      clientSelection = { label: row.cliente, id: payload.client_id ?? row.clientId ?? null }
+    }
+    payload.client = clientSelection.label
+    payload.client_id = clientSelection.id
+    if (payload.client_id == null && typeof row.clientId === 'number') {
+      payload.client_id = row.clientId
+    }
+    const pendingKey = `${row.id}:${key}`
+    try {
+      console.log('[Sheet][PATCH][payload]', JSON.stringify(payload, null, 2))
+    } catch (e) {
+      console.log('[Sheet][PATCH][payload]', payload)
+    }
+    setPending(prev => new Set(prev).add(pendingKey))
+    try {
+      await updateNocoRecord(WRITE_BASE_URL, token, recordId, payload)
+      lastSaved.current.set(mapKey, normVal)
+      toast.success(`Guardado OK (${key})`)
+    } catch (e) {
+      console.warn('[NocoDB][PATCH] error', e)
+      toast.error(`Error (${key}): ${e?.message || 'fallo'}`)
+    } finally {
+      setPending(prev => {
+        const next = new Set(prev)
+        next.delete(pendingKey)
+        return next
+      })
+    }
+  }, [normalize, clientIdMap])
 
   // Sync client filter with URL ?client=...
   React.useEffect(() => {
@@ -175,14 +423,85 @@ export default function Sheet() {
 
   // Toasts removed per request
 
+  const filteredRows = useFilteredRows(rows, { status: statusFilter, score: scoreFilter, query: companyQuery, date: dateFilter })
+  const sortedRows = useSortedRows(filteredRows, sort)
+
+  const { lineOptionsByClient, lineLabelLookup } = React.useMemo(() => {
+    const clientMap = new Map()
+    const labelMap = new Map()
+    for (const line of clientLines) {
+      const keyCandidates = []
+      if (line.clientId !== null && line.clientId !== undefined) {
+        keyCandidates.push(line.clientId)
+        const numeric = Number(line.clientId)
+        if (Number.isFinite(numeric)) keyCandidates.push(numeric)
+        if (typeof line.clientId === 'string') keyCandidates.push(line.clientId.trim())
+      }
+      const lineId = line.lineId
+      const label = line.label
+      if (lineId === null || lineId === undefined || !label) continue
+      const normalizedId = Number.isFinite(Number(lineId)) ? Number(lineId) : lineId
+      labelMap.set(normalizedId, label)
+      labelMap.set(String(normalizedId), label)
+      for (const key of keyCandidates) {
+        if (key === null || key === undefined || key === '') continue
+        if (!clientMap.has(key)) clientMap.set(key, new Map())
+        const optionMap = clientMap.get(key)
+        if (!optionMap.has(normalizedId)) optionMap.set(normalizedId, { id: normalizedId, label })
+      }
+    }
+    const normalizedClientMap = new Map()
+    for (const [key, map] of clientMap.entries()) {
+      const list = Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label))
+      normalizedClientMap.set(key, list)
+      normalizedClientMap.set(String(key), list)
+    }
+    return { lineOptionsByClient: normalizedClientMap, lineLabelLookup: labelMap }
+  }, [clientLines])
+
+  const createClientId = React.useMemo(() => {
+    const { id } = resolveClientSelection(createForm.cliente)
+    if (id != null) return id
+    if (clientFilter && clientFilter !== ALL_CLIENTS) {
+      const byValue = clientOptions.find(opt => opt.value === clientFilter)
+      if (byValue?.id != null) return byValue.id
+      if (/^\d+$/.test(String(clientFilter))) return Number(clientFilter)
+    }
+    return null
+  }, [createForm.cliente, resolveClientSelection, clientFilter, clientOptions])
+
+  const createLineaOptions = React.useMemo(() => {
+    const buildList = (list = []) => list.map(opt => ({ id: opt.id, label: opt.label }))
+    if (createClientId != null) {
+      const candidates = [createClientId, String(createClientId)]
+      for (const key of candidates) {
+        if (lineOptionsByClient.has(key)) {
+          const arr = lineOptionsByClient.get(key)
+          if (Array.isArray(arr) && arr.length) return buildList(arr)
+        }
+      }
+    }
+    // No client-specific match; aggregate all unique options so the dropdown still opens
+    const unique = new Map()
+    for (const list of lineOptionsByClient.values()) {
+      if (!Array.isArray(list)) continue
+      for (const opt of list) {
+        if (!opt || opt.id == null) continue
+        const key = Number.isFinite(Number(opt.id)) ? Number(opt.id) : opt.id
+        if (!unique.has(key)) unique.set(key, { id: key, label: opt.label })
+      }
+    }
+    return Array.from(unique.values()).sort((a, b) => a.label.localeCompare(b.label))
+  }, [createClientId, lineOptionsByClient])
+
   return (
     <div className="sheet-root">
       <div className="sheet-headerbar" style={{marginBottom: 4, display:'flex', flexDirection:'column', gap:8}}>
         <div style={{display:'flex', gap:12, alignItems:'center', flexWrap:'wrap', justifyContent:'space-between', width:'100%'}}>
-          <ClientFilter large value={clientFilter} options={[ALL_CLIENTS, ...clients]} onChange={setClientFilter} disabled={createOpen} />
-        </div>
-        <div style={{display:'flex', gap:12, alignItems:'center', flexWrap:'wrap', justifyContent:'space-between', width:'100%'}}>
-          <div style={{display:'flex', gap:12, alignItems:'center', flexWrap:'wrap'}}>
+          <ClientFilter large value={clientFilter} options={clientFilterOptions} onChange={setClientFilter} disabled={createOpen} />
+      </div>
+      <div style={{display:'flex', gap:12, alignItems:'center', flexWrap:'wrap', justifyContent:'space-between', width:'100%'}}>
+        <div style={{display:'flex', gap:12, alignItems:'center', flexWrap:'wrap'}}>
             <label style={{display:'flex',alignItems:'center',gap:8}}>
               <span style={{fontWeight:700}}>Company:</span>
               <Input placeholder="Buscar (fuzzy)" style={{width:260}} value={companyQuery} onChange={e=>setCompanyQuery(e.target.value)} disabled={createOpen} />
@@ -190,33 +509,38 @@ export default function Sheet() {
             <label style={{display:'flex',alignItems:'center',gap:8}}>
               <span style={{fontWeight:700}}>Status:</span>
               <select
-                className="client-title-trigger"
+                className="client-title-trigger status-filter-select"
                 value={statusFilter}
                 onChange={e => setStatusFilter(e.target.value)}
                 disabled={createOpen}
               >
                 <option value="">Todos</option>
-                {STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                {statusOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
               </select>
             </label>
             <label style={{display:'flex',alignItems:'center',gap:8}}>
               <span style={{fontWeight:700}}>Score:</span>
               <select
-                className="client-title-trigger"
+                className="client-title-trigger status-filter-select"
                 value={scoreFilter}
                 onChange={e => setScoreFilter(e.target.value)}
                 disabled={createOpen}
               >
                 <option value="">Todos</option>
-                <option value="none">Sin score</option>
-                {Array.from({length: 11}).map((_,n)=>(<option key={n} value={String(n)}>{n}</option>))}
+                {scoreOptions.hasEmpty && <option value="none">Sin score</option>}
+                {scoreOptions.values.map(opt => <option key={opt} value={opt}>{opt}</option>)}
               </select>
             </label>
-          </div>
-          <div>
-            <Button onClick={addRow} className="bg-black text-white hover:bg-neutral-900">Agregar fila</Button>
-          </div>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <span style={{fontWeight:700}}>Fecha:</span>
+              <DateFilter value={dateFilter} onChange={setDateFilter} disabled={createOpen} />
+            </div>
         </div>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <span className="sheet-count-pill">{filteredRows.length} registros</span>
+          <Button onClick={addRow} className="bg-black text-white hover:bg-neutral-900">Agregar fila</Button>
+        </div>
+      </div>
       </div>
 
       <div className="toolbar">
@@ -224,7 +548,7 @@ export default function Sheet() {
           <Button variant="secondary" onClick={openDuplicate}>Duplicar</Button>
         )}
         {selectedIds.size > 0 && (
-          <Button variant="default" className="bg-rose-100 text-rose-800 border border-rose-200 hover:bg-rose-100/80" onClick={removeSelected}>
+          <Button variant="default" className="bg-rose-100 text-rose-800 border border-rose-200 hover:bg-rose-100/80" onClick={removeSelected} disabled={selectionLocked}>
             Eliminar seleccionados ({selectedIds.size})
           </Button>
         )}
@@ -232,20 +556,15 @@ export default function Sheet() {
 
       <SheetTable
         columns={columns}
-        rows={useSortedRows(useFilteredRows(rows, { status: statusFilter, score: scoreFilter, query: companyQuery }), sort)}
+        rows={sortedRows}
         loading={loading}
         onCellChange={updateCell}
-        onCellBlur={async (id, key, value) => {
-          const mapKey = `${id}:${key}`
-          const saved = lastSaved.current.get(mapKey)
-          const normVal = normalize(key, value)
-          if (saved === normVal) return // no cambios
-          const res = await updateRemoteCell(id, key, value)
-          if (res?.ok) {
-            lastSaved.current.set(mapKey, normVal)
-            enqueueToast(`Guardado OK (${key})`)
-          } else {
-            enqueueToast(`Error (${key}): ${res?.error?.message || 'fallo'}`)
+        onCellBlur={handleCellBlur}
+        onCellClick={row => {
+          try {
+            console.log('[cell-click]', JSON.stringify(row, null, 2))
+          } catch {
+            console.log('[cell-click]', row)
           }
         }}
         selectedIds={selectedIds}
@@ -259,19 +578,42 @@ export default function Sheet() {
           return { key: null, dir: null }
         })}
         pending={pending}
+        clientLineMap={lineOptionsByClient}
+        lineLabelLookup={lineLabelLookup}
       />
-      <ToastContainer toasts={toasts} />
+      <Toaster position="top-right" toastOptions={{ duration: 2000 }} />
 
       {createOpen && (
         <CreateSlide
           values={createForm}
-          onChange={(key, val) => setCreateForm(v => ({ ...v, [key]: val }))}
-          onCancel={() => { setCreateOpen(false); setSelectionLocked(false) }}
+          errors={createErrors}
+          requiredFields={REQUIRED_FIELDS.map(f => f.key)}
+          lineaOptions={createLineaOptions}
+          onChange={(key, val) => {
+            setCreateForm(v => ({ ...v, [key]: val }))
+            setCreateErrors(prev => {
+              if (!prev[key]) return prev
+              const next = { ...prev }
+              delete next[key]
+              return next
+            })
+          }}
+          onCancel={() => { setCreateOpen(false); setSelectionLocked(false); setCreateErrors({}) }}
           onSave={async () => {
+            if (!validateCreateForm()) return
             try {
               setCreateSaving(true)
               const token = import.meta.env.VITE_NOCODB_TOKEN
-              const baseUrl = 'https://nocodb.wearesiete.com/api/v2/tables/mou2qt44g8tdxph/records'
+              const baseUrl = WRITE_BASE_URL
+              const { label: resolvedLabel, id: resolvedId } = resolveClientSelection(createForm.cliente)
+              if (!resolvedLabel) {
+                toast.error('Selecciona un cliente antes de guardar')
+                return
+              }
+              if (resolvedId == null) {
+                toast.error('No se encontró el client_id para el cliente seleccionado')
+                return
+              }
               const payload = {
                 company: createForm.company,
                 celebration_date: createForm.fecha,
@@ -282,60 +624,25 @@ export default function Sheet() {
                 employers_quantity: createForm.empleados,
                 score: createForm.score === '' ? null : Number(createForm.score),
                 feedback: createForm.feedback,
-                client: createForm.cliente || (clientFilter === ALL_CLIENTS ? '' : clientFilter),
+                client: resolvedLabel,
+                client_id: resolvedId,
+                lineas_negocio_ids: sanitizeLineaNegocio(createForm.lineaNegocio || []),
               }
               const rec = await createNocoRecord(baseUrl, token, payload)
-              const merged = { ...(payload || {}), ...(rec || {}) }
-              merged.Id = rec?.Id ?? rec?.id ?? merged.Id
-              merged.id = rec?.id ?? rec?.Id ?? merged.id
-              const row = mapRecordToRow(merged)
+              const row = mapRecordToRow(rec ?? { ...payload, id: null })
               setRows(prev => [row, ...prev])
               // clear any selection after successful create
               setSelectedIds(new Set())
               // update snapshot for new row
               const snap = lastSaved.current
               for (const c of columns) snap.set(`${row.id}:${c.key}`, row[c.key] ?? '')
-              enqueueToast('Creado OK')
+              toast.success('Creado OK')
               setCreateOpen(false)
               setSelectionLocked(false)
+              setCreateErrors({})
+              setCreateForm({ company: '', fecha: '', status: '', kdm: '', tituloKdm: '', industria: '', empleados: '', score: '', feedback: '', cliente: '', lineaNegocio: [] })
             } catch (e) {
-              enqueueToast(`Error al crear: ${e.message}`)
-            } finally {
-              setCreateSaving(false)
-            }
-          }}
-          onSaveAnother={async () => {
-            try {
-              setCreateSaving(true)
-              const token = import.meta.env.VITE_NOCODB_TOKEN
-              const baseUrl = 'https://nocodb.wearesiete.com/api/v2/tables/mou2qt44g8tdxph/records'
-              const payload = {
-                company: createForm.company,
-                celebration_date: createForm.fecha,
-                status: createForm.status,
-                kdm: createForm.kdm,
-                kdm_title: createForm.tituloKdm,
-                industry: createForm.industria,
-                employers_quantity: createForm.empleados,
-                score: createForm.score === '' ? null : Number(createForm.score),
-                feedback: createForm.feedback,
-                client: createForm.cliente || (clientFilter === ALL_CLIENTS ? '' : clientFilter),
-              }
-              const rec = await createNocoRecord(baseUrl, token, payload)
-              const merged = { ...(payload || {}), ...(rec || {}) }
-              merged.Id = rec?.Id ?? rec?.id ?? merged.Id
-              merged.id = rec?.id ?? rec?.Id ?? merged.id
-              const row = mapRecordToRow(merged)
-              setRows(prev => [row, ...prev])
-              // clear any selection after successful create-another
-              setSelectedIds(new Set())
-              const snap = lastSaved.current
-              for (const c of columns) snap.set(`${row.id}:${c.key}`, row[c.key] ?? '')
-              enqueueToast('Creado OK')
-              // reset form for next creation (preserve cliente)
-              setCreateForm({ company: '', fecha: '', status: '', kdm: '', tituloKdm: '', industria: '', empleados: '', score: '', feedback: '', cliente: createForm.cliente })
-            } catch (e) {
-              enqueueToast(`Error al crear: ${e.message}`)
+              toast.error(`Error al crear: ${e.message}`)
             } finally {
               setCreateSaving(false)
             }
@@ -355,13 +662,16 @@ function useSortedRows(rows, sort) {
     copy.sort((a, b) => {
       let va = a[key]
       let vb = b[key]
-      // handle numeric for score
       if (key === 'score') {
         va = Number.isFinite(va) ? va : -Infinity
         vb = Number.isFinite(vb) ? vb : -Infinity
         return (va - vb) * (dir === 'asc' ? 1 : -1)
       }
-      // fecha stored as yyyy-MM-dd, lexicographic compare is fine
+      if (key === 'id') {
+        const va = Number.isFinite(a.id) ? a.id : -Infinity
+        const vb = Number.isFinite(b.id) ? b.id : -Infinity
+        return (va - vb) * (dir === 'asc' ? 1 : -1)
+      }
       const sa = (va ?? '').toString()
       const sb = (vb ?? '').toString()
       return sa.localeCompare(sb) * (dir === 'asc' ? 1 : -1)
@@ -370,7 +680,7 @@ function useSortedRows(rows, sort) {
   }, [rows, sort])
 }
 
-function useFilteredRows(rows, { status, score, query }) {
+function useFilteredRows(rows, { status, score, query, date }) {
   return React.useMemo(() => {
     const q = (query || '').trim()
     const hasQ = q.length > 0
@@ -392,6 +702,10 @@ function useFilteredRows(rows, { status, score, query }) {
       const tokens = n.split(/\s+/).filter(Boolean)
       return tokens.every(t => h.includes(t) || isSubseq(t, h))
     }
+    const hasDate = Boolean(date?.start || date?.end)
+    const startDate = date?.start ? new Date(`${date.start}T00:00:00`) : null
+    const endDate = date?.end ? new Date(`${date.end}T23:59:59`) : null
+
     return rows.filter(r => {
       if (status && r.status !== status) return false
       // score filter
@@ -400,26 +714,19 @@ function useFilteredRows(rows, { status, score, query }) {
           if (!(r.score === '' || r.score === null || r.score === undefined)) return false
         } else {
           const sel = Number(score)
-          const sv = Number.isFinite(r.score) ? r.score : (r.score === 0 ? 0 : null)
-          if (sv == null || sv !== sel) return false
+          const rowVal = r.score
+          const numericScore = rowVal === '' || rowVal == null ? null : Number(rowVal)
+          if (!Number.isFinite(numericScore) || numericScore !== sel) return false
         }
+      }
+      if (hasDate) {
+        if (!r.fecha) return false
+        const rowDate = new Date(`${r.fecha}T00:00:00`)
+        if (startDate && rowDate < startDate) return false
+        if (endDate && rowDate > endDate) return false
       }
       if (hasQ && !fuzzy(q, r.company || '')) return false
       return true
     })
-  }, [rows, status, score, query])
+  }, [rows, status, score, query, date?.start, date?.end])
 }
-
-function ToastContainer({ toasts }) {
-  return (
-    <div className="toast-container">
-      {toasts.map(t => (
-        <div key={t.id} className="toast">{t.msg}</div>
-      ))}
-    </div>
-  )
-}
-
-//
-
-// CreateSlide moved to its own component
