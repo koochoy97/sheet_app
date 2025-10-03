@@ -40,6 +40,8 @@ const BRIEF_FIELDS = [
   { key: 'AE_mails', label: 'AE mails' },
 ]
 
+const BRIEF_WEBHOOK_URL = 'https://n8n.wearesiete.com/webhook/f98f5529-8ee3-4dda-be59-51a0991e8b2d'
+
 const sanitizeLineaNegocio = (value) => {
   if (!Array.isArray(value)) return []
   const seen = new Set()
@@ -836,11 +838,52 @@ export default function Sheet() {
             setBriefError('Falta completar AE mails antes de enviar')
             return
           }
+          const payload = {
+            recordId: briefRow.recordId ?? briefRow.id ?? null,
+            company: briefRow.company ?? '',
+            cliente: briefRow.cliente ?? '',
+            fecha: briefRow.fecha ?? '',
+            status: briefRow.status ?? '',
+            kdm: briefRow.kdm ?? '',
+            tituloKdm: briefRow.tituloKdm ?? '',
+            industria: briefRow.industria ?? '',
+            empleados: briefRow.empleados ?? '',
+            score: briefRow.score ?? '',
+            feedback: briefRow.feedback ?? '',
+            company_linkedin: briefRow.company_linkedin ?? '',
+            person_linkedin: briefRow.person_linkedin ?? '',
+            web_url: briefRow.web_url ?? '',
+            comments: briefRow.comments ?? '',
+            ae_mails: emails,
+            lineaNegocio: Array.isArray(briefRow.lineaNegocio) ? briefRow.lineaNegocio : [],
+            timestamp: new Date().toISOString(),
+          }
           try {
             setBriefSending(true)
+            setBriefError('')
+            const res = await fetch(BRIEF_WEBHOOK_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            })
+            if (!res.ok) {
+              let info = ''
+              try { info = await res.text() } catch {}
+              throw new Error(info || `HTTP ${res.status}`)
+            }
+            try {
+              const text = await res.text()
+              console.log('[Brief][POST] response', text)
+            } catch (e) {
+              console.log('[Brief][POST] response unreadable', e)
+            }
             toast.success(`Brief enviado para ${briefRow.company || 'registro'}`)
-          } finally {
             closeBrief()
+          } catch (err) {
+            console.warn('[Brief][POST] error', err)
+            setBriefError(`No se pudo enviar el brief: ${err?.message || 'fallo'}`)
+          } finally {
+            setBriefSending(false)
           }
         }}
       />
