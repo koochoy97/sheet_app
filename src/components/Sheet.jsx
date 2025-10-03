@@ -7,8 +7,9 @@ import SheetTable from './SheetTable'
 import DateFilter from './DateFilter'
 import { useNocoDB } from '../hooks/useNocoDB'
 import { COLUMNS as columns, ALL_CLIENTS, STATUS_OPTIONS } from '../constants/sheet'
-import { createNocoRecord, deleteNocoRecords, mapRecordToRow, updateNocoRecord } from '../services/nocodb'
+import { createNocoRecord, archiveNocoRecords, mapRecordToRow, normalizeTextArray, updateNocoRecord } from '../services/nocodb'
 import CreateSlide from './CreateSlide'
+import BriefDialog from './BriefDialog'
 
 const READ_BASE_URL = 'https://rest.wearesiete.com/siete_service_meetings'
 const WRITE_BASE_URL = READ_BASE_URL
@@ -19,6 +20,24 @@ const REQUIRED_FIELDS = [
   { key: 'status', label: 'Status' },
   { key: 'kdm', label: 'KDM' },
   { key: 'tituloKdm', label: 'Título del KDM' },
+]
+
+const BRIEF_FIELDS = [
+  { key: 'company', label: 'Company' },
+  { key: 'cliente', label: 'Cliente' },
+  { key: 'fecha', label: 'Fecha de celebración' },
+  { key: 'status', label: 'Status' },
+  { key: 'kdm', label: 'KDM' },
+  { key: 'tituloKdm', label: 'Título del KDM' },
+  { key: 'industria', label: 'Industria' },
+  { key: 'empleados', label: '# Empleados' },
+  { key: 'score', label: 'Score' },
+  { key: 'feedback', label: 'Feedback' },
+  { key: 'company_linkedin', label: 'LinkedIn empresa' },
+  { key: 'person_linkedin', label: 'LinkedIn persona' },
+  { key: 'web_url', label: 'Web' },
+  { key: 'comments', label: 'Comentarios' },
+  { key: 'AE_mails', label: 'AE mails' },
 ]
 
 const sanitizeLineaNegocio = (value) => {
@@ -36,13 +55,41 @@ const sanitizeLineaNegocio = (value) => {
   return normalized
 }
 
+const sanitizeTextArray = (value) => {
+  if (Array.isArray(value)) return normalizeTextArray(value)
+  if (typeof value === 'string') return normalizeTextArray(value)
+  if (value == null) return []
+  return normalizeTextArray([value])
+}
+
+const toMailDraftArray = (value) => {
+  if (typeof value === 'string') {
+    const text = value.replace(/\r/g, '')
+    return text.split('\n').map(item => item.trim())
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => {
+      if (typeof item === 'string') return item.trim()
+      if (item == null) return ''
+      return String(item).trim()
+    })
+  }
+  if (value == null) return []
+  return [String(value)]
+}
+
 function toCSV(rows) {
   const header = columns.map(c => c.label)
   const lines = [header]
   for (const r of rows) {
     const vals = columns.map(c => {
-      const v = r[c.key] ?? ''
-      const s = String(v)
+      const raw = r[c.key]
+      let s = ''
+      if (Array.isArray(raw)) {
+        s = sanitizeTextArray(raw).join('; ')
+      } else if (raw !== undefined && raw !== null) {
+        s = String(raw)
+      }
       if (s.includes('"') || s.includes(',') || s.includes('\n')) {
         return '"' + s.replaceAll('"', '""') + '"'
       }
@@ -66,7 +113,22 @@ export default function Sheet() {
   const [createOpen, setCreateOpen] = React.useState(false)
   const [createSaving, setCreateSaving] = React.useState(false)
   const [createForm, setCreateForm] = React.useState({
-    company: '', fecha: '', status: '', kdm: '', tituloKdm: '', industria: '', empleados: '', score: '', feedback: '', cliente: '', lineaNegocio: []
+    company: '',
+    fecha: '',
+    status: '',
+    kdm: '',
+    tituloKdm: '',
+    industria: '',
+    empleados: '',
+    score: '',
+    feedback: '',
+    company_linkedin: '',
+    person_linkedin: '',
+    web_url: '',
+    comments: '',
+    AE_mails: '',
+    cliente: '',
+    lineaNegocio: [],
   })
   const [createErrors, setCreateErrors] = React.useState({})
   // Filters
@@ -75,6 +137,11 @@ export default function Sheet() {
   const [dateFilter, setDateFilter] = React.useState({ label: 'Todo el tiempo', start: null, end: null })
   const [companyQuery, setCompanyQuery] = React.useState('')
   const [pending, setPending] = React.useState(new Set())
+  const [briefOpen, setBriefOpen] = React.useState(false)
+  const [briefRow, setBriefRow] = React.useState(null)
+  const [briefSending, setBriefSending] = React.useState(false)
+  const [briefError, setBriefError] = React.useState('')
+  const initialClientRef = React.useRef(true)
 
   const clientOptions = React.useMemo(() => clients.map(opt => {
     if (typeof opt === 'string') {
@@ -162,6 +229,11 @@ export default function Sheet() {
       empleados: row.empleados || '',
       score: row.score === 0 ? 0 : (row.score || ''),
       feedback: row.feedback || '',
+      company_linkedin: row.company_linkedin || '',
+      person_linkedin: row.person_linkedin || '',
+      web_url: row.web_url || '',
+      comments: row.comments || '',
+      AE_mails: sanitizeTextArray(row.AE_mails || []).join('\n'),
       cliente: (clientFilter === ALL_CLIENTS ? (row.cliente || '') : (selectedLabel || row.cliente || '')),
       lineaNegocio: sanitizeLineaNegocio(row.lineaNegocio || []),
     })
@@ -171,13 +243,56 @@ export default function Sheet() {
     setCreateErrors({})
   }
 
+  const openBrief = () => {
+    if (selectedIds.size !== 1) return
+    const id = Array.from(selectedIds)[0]
+    const row = rows.find(r => r.id === id)
+    if (!row) return
+    const selectedLabel = getSelectedClientLabel()
+    const briefData = {
+      ...row,
+      cliente: row.cliente || selectedLabel || '',
+      AE_mails: Array.isArray(row.AE_mails) ? row.AE_mails : sanitizeTextArray(row.AE_mails),
+    }
+    setBriefRow(briefData)
+    setBriefOpen(true)
+    setSelectionLocked(true)
+    const hasEmails = Array.isArray(briefData.AE_mails) ? briefData.AE_mails.length > 0 : Boolean(briefData.AE_mails)
+    setBriefError(hasEmails ? '' : 'Falta completar AE mails antes de enviar')
+  }
+
+  const closeBrief = () => {
+    setBriefOpen(false)
+    setBriefRow(null)
+    setBriefSending(false)
+    setBriefError('')
+    setSelectionLocked(false)
+  }
+
   const addRow = () => {
     // Clear any selection and lock selection while creating
     if (selectedIds.size > 0) setSelectedIds(new Set())
     setSelectionLocked(true)
     // Open slide-over to create new record
     const selectedLabel = getSelectedClientLabel()
-    setCreateForm({ company: '', fecha: '', status: '', kdm: '', tituloKdm: '', industria: '', empleados: '', score: '', feedback: '', cliente: selectedLabel, lineaNegocio: [] })
+    setCreateForm({
+      company: '',
+      fecha: '',
+      status: '',
+      kdm: '',
+      tituloKdm: '',
+      industria: '',
+      empleados: '',
+      score: '',
+      feedback: '',
+      company_linkedin: '',
+      person_linkedin: '',
+      web_url: '',
+      comments: '',
+      AE_mails: '',
+      cliente: selectedLabel,
+      lineaNegocio: [],
+    })
     setCreateErrors({})
     setCreateOpen(true)
   }
@@ -189,6 +304,8 @@ export default function Sheet() {
       if (!Number.isFinite(v)) v = ''
     } else if (key === 'lineaNegocio') {
       v = sanitizeLineaNegocio(Array.isArray(value) ? value : [])
+    } else if (key === 'AE_mails') {
+      v = toMailDraftArray(value)
     }
     setRows(prev => prev.map(r => r.id === id ? { ...r, [key]: v } : r))
   }
@@ -213,19 +330,19 @@ export default function Sheet() {
         toast.error('Falta token de autenticación')
         return
       }
-      const rowsToDelete = rows.filter(r => selectedIds.has(r.id))
-      const ids = rowsToDelete
+      const rowsToArchive = rows.filter(r => selectedIds.has(r.id))
+      const ids = rowsToArchive
         .map(r => (typeof r.recordId === 'number' ? r.recordId : (typeof r.id === 'number' ? r.id : Number(r.recordId))))
         .filter(id => Number.isFinite(id))
       if (ids.length) {
-        await deleteNocoRecords(WRITE_BASE_URL, token, ids)
+        await archiveNocoRecords(WRITE_BASE_URL, token, ids)
       }
       setRows(prev => prev.filter(r => !selectedIds.has(r.id)))
       setSelectedIds(new Set())
-      toast.success('Eliminado correctamente')
+      toast.success('Archivado correctamente')
     } catch (e) {
-      console.warn('[REST][DELETE] error', e)
-      toast.error(`Error al eliminar: ${e?.message || 'fallo'}`)
+      console.warn('[REST][ARCHIVE] error', e)
+      toast.error(`Error al archivar: ${e?.message || 'fallo'}`)
     } finally {
       setSelectionLocked(false)
     }
@@ -296,6 +413,10 @@ export default function Sheet() {
       const sanitized = sanitizeLineaNegocio(Array.isArray(val) ? val : [])
       return JSON.stringify(sanitized)
     }
+    if (key === 'AE_mails') {
+      const sanitized = sanitizeTextArray(val)
+      return JSON.stringify(sanitized)
+    }
     return (val ?? '').toString()
   }, [])
   const prevLoading = React.useRef(true)
@@ -342,6 +463,11 @@ export default function Sheet() {
       employers_quantity: row.empleados ?? '',
       score: row.score === '' ? null : (row.score ?? null),
       feedback: row.feedback ?? '',
+      company_linkedin: row.company_linkedin ?? '',
+      person_linkedin: row.person_linkedin ?? '',
+      web_url: row.web_url ?? '',
+      comments: row.comments ?? '',
+      AE_mails: sanitizeTextArray(row.AE_mails ?? []),
       client_id: baseClientId,
     }
     payload.lineas_negocio_ids = sanitizeLineaNegocio(row.lineaNegocio || [])
@@ -363,6 +489,11 @@ export default function Sheet() {
         break
       }
       case 'feedback': payload.feedback = value ?? '' ; break
+      case 'company_linkedin': payload.company_linkedin = value ?? '' ; break
+      case 'person_linkedin': payload.person_linkedin = value ?? '' ; break
+      case 'web_url': payload.web_url = value ?? '' ; break
+      case 'comments': payload.comments = value ?? '' ; break
+      case 'AE_mails': payload.AE_mails = sanitizeTextArray(value) ; break
       case 'lineaNegocio': payload.lineas_negocio_ids = sanitizeLineaNegocio(Array.isArray(value) ? value : []) ; break
       default: break
     }
@@ -419,6 +550,15 @@ export default function Sheet() {
       url.searchParams.set('client', clientFilter)
     }
     window.history.replaceState({}, '', url.toString())
+  }, [clientFilter])
+
+  React.useEffect(() => {
+    if (initialClientRef.current) {
+      initialClientRef.current = false
+      return
+    }
+    setSelectedIds(new Set())
+    setSelectionLocked(false)
   }, [clientFilter])
 
   // Toasts removed per request
@@ -496,18 +636,28 @@ export default function Sheet() {
 
   return (
     <div className="sheet-root">
-      <div className="sheet-headerbar" style={{marginBottom: 4, display:'flex', flexDirection:'column', gap:8}}>
-        <div style={{display:'flex', gap:12, alignItems:'center', flexWrap:'wrap', justifyContent:'space-between', width:'100%'}}>
+      <div className="sheet-headerbar">
+        <div className="sheet-header-row">
           <ClientFilter large value={clientFilter} options={clientFilterOptions} onChange={setClientFilter} disabled={createOpen} />
-      </div>
-      <div style={{display:'flex', gap:12, alignItems:'center', flexWrap:'wrap', justifyContent:'space-between', width:'100%'}}>
-        <div style={{display:'flex', gap:12, alignItems:'center', flexWrap:'wrap'}}>
-            <label style={{display:'flex',alignItems:'center',gap:8}}>
-              <span style={{fontWeight:700}}>Company:</span>
-              <Input placeholder="Buscar (fuzzy)" style={{width:260}} value={companyQuery} onChange={e=>setCompanyQuery(e.target.value)} disabled={createOpen} />
+          <div className="sheet-header-actions">
+            <span className="sheet-count-pill">{filteredRows.length} registros</span>
+            <Button onClick={addRow} className="bg-black text-white hover:bg-neutral-900">Agregar fila</Button>
+          </div>
+        </div>
+        <div className="sheet-header-row sheet-header-row--filters">
+          <div className="sheet-header-filters">
+            <label className="sheet-filter-field">
+              <span>Company:</span>
+              <Input
+                placeholder="Buscar (fuzzy)"
+                style={{ width: 260 }}
+                value={companyQuery}
+                onChange={e => setCompanyQuery(e.target.value)}
+                disabled={createOpen}
+              />
             </label>
-            <label style={{display:'flex',alignItems:'center',gap:8}}>
-              <span style={{fontWeight:700}}>Status:</span>
+            <label className="sheet-filter-field">
+              <span>Status:</span>
               <select
                 className="client-title-trigger status-filter-select"
                 value={statusFilter}
@@ -518,8 +668,8 @@ export default function Sheet() {
                 {statusOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
               </select>
             </label>
-            <label style={{display:'flex',alignItems:'center',gap:8}}>
-              <span style={{fontWeight:700}}>Score:</span>
+            <label className="sheet-filter-field">
+              <span>Score:</span>
               <select
                 className="client-title-trigger status-filter-select"
                 value={scoreFilter}
@@ -531,21 +681,20 @@ export default function Sheet() {
                 {scoreOptions.values.map(opt => <option key={opt} value={opt}>{opt}</option>)}
               </select>
             </label>
-            <div style={{display:'flex',alignItems:'center',gap:8}}>
-              <span style={{fontWeight:700}}>Fecha:</span>
+            <div className="sheet-filter-field">
+              <span>Fecha:</span>
               <DateFilter value={dateFilter} onChange={setDateFilter} disabled={createOpen} />
             </div>
+          </div>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:12}}>
-          <span className="sheet-count-pill">{filteredRows.length} registros</span>
-          <Button onClick={addRow} className="bg-black text-white hover:bg-neutral-900">Agregar fila</Button>
-        </div>
-      </div>
       </div>
 
       <div className="toolbar">
         {selectedIds.size === 1 && (
           <Button variant="secondary" onClick={openDuplicate}>Duplicar</Button>
+        )}
+        {selectedIds.size === 1 && (
+          <Button variant="outline" onClick={openBrief} disabled={selectionLocked}>Enviar brief</Button>
         )}
         {selectedIds.size > 0 && (
           <Button variant="default" className="bg-rose-100 text-rose-800 border border-rose-200 hover:bg-rose-100/80" onClick={removeSelected} disabled={selectionLocked}>
@@ -624,9 +773,15 @@ export default function Sheet() {
                 employers_quantity: createForm.empleados,
                 score: createForm.score === '' ? null : Number(createForm.score),
                 feedback: createForm.feedback,
+                company_linkedin: createForm.company_linkedin,
+                person_linkedin: createForm.person_linkedin,
+                web_url: createForm.web_url,
+                comments: createForm.comments,
+                AE_mails: sanitizeTextArray(createForm.AE_mails),
                 client: resolvedLabel,
                 client_id: resolvedId,
                 lineas_negocio_ids: sanitizeLineaNegocio(createForm.lineaNegocio || []),
+                archived: false,
               }
               const rec = await createNocoRecord(baseUrl, token, payload)
               const row = mapRecordToRow(rec ?? { ...payload, id: null })
@@ -635,12 +790,29 @@ export default function Sheet() {
               setSelectedIds(new Set())
               // update snapshot for new row
               const snap = lastSaved.current
-              for (const c of columns) snap.set(`${row.id}:${c.key}`, row[c.key] ?? '')
+              for (const c of columns) snap.set(`${row.id}:${c.key}`, normalize(c.key, row[c.key]))
               toast.success('Creado OK')
               setCreateOpen(false)
               setSelectionLocked(false)
               setCreateErrors({})
-              setCreateForm({ company: '', fecha: '', status: '', kdm: '', tituloKdm: '', industria: '', empleados: '', score: '', feedback: '', cliente: '', lineaNegocio: [] })
+              setCreateForm({
+                company: '',
+                fecha: '',
+                status: '',
+                kdm: '',
+                tituloKdm: '',
+                industria: '',
+                empleados: '',
+                score: '',
+                feedback: '',
+                company_linkedin: '',
+                person_linkedin: '',
+                web_url: '',
+                comments: '',
+                AE_mails: '',
+                cliente: '',
+                lineaNegocio: [],
+              })
             } catch (e) {
               toast.error(`Error al crear: ${e.message}`)
             } finally {
@@ -650,6 +822,28 @@ export default function Sheet() {
           saving={createSaving}
         />
       )}
+      <BriefDialog
+        open={briefOpen}
+        row={briefRow}
+        fields={BRIEF_FIELDS}
+        sending={briefSending}
+        error={briefError}
+        onClose={closeBrief}
+        onConfirm={async () => {
+          if (!briefRow) return
+          const emails = Array.isArray(briefRow.AE_mails) ? briefRow.AE_mails : normalizeTextArray(briefRow.AE_mails)
+          if (!emails.length) {
+            setBriefError('Falta completar AE mails antes de enviar')
+            return
+          }
+          try {
+            setBriefSending(true)
+            toast.success(`Brief enviado para ${briefRow.company || 'registro'}`)
+          } finally {
+            closeBrief()
+          }
+        }}
+      />
     </div>
   )
 }

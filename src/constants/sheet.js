@@ -15,8 +15,13 @@ export const COLUMNS = [
   { key: 'industria', label: 'Industria' },
   { key: 'empleados', label: '# Empleados' },
   { key: 'score', label: 'Score' },
-  { key: 'feedback', label: 'Feedback' },
   { key: 'lineaNegocio', label: 'Línea de negocio' },
+  { key: 'feedback', label: 'Feedback' },
+  { key: 'company_linkedin', label: 'LinkedIn empresa' },
+  { key: 'person_linkedin', label: 'LinkedIn persona' },
+  { key: 'web_url', label: 'Web' },
+  { key: 'comments', label: 'Comentarios' },
+  { key: 'AE_mails', label: 'AE mails' },
 ]
 
 export const ALL_CLIENTS = '__ALL__'
