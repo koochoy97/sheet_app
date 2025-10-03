@@ -149,6 +149,59 @@ export default function CreateSlide({
             />
             {errors.feedback && <FieldError message={errors.feedback} />}
           </label>
+          <label className={errors.company_linkedin ? 'text-rose-700' : undefined}>
+            {renderLabel('LinkedIn empresa', 'company_linkedin')}
+            <Input
+              value={values.company_linkedin}
+              onChange={e => onChange('company_linkedin', e.target.value)}
+              aria-invalid={Boolean(errors.company_linkedin)}
+              className={errors.company_linkedin ? errorClasses : undefined}
+            />
+            {errors.company_linkedin && <FieldError message={errors.company_linkedin} />}
+          </label>
+          <label className={errors.person_linkedin ? 'text-rose-700' : undefined}>
+            {renderLabel('LinkedIn persona', 'person_linkedin')}
+            <Input
+              value={values.person_linkedin}
+              onChange={e => onChange('person_linkedin', e.target.value)}
+              aria-invalid={Boolean(errors.person_linkedin)}
+              className={errors.person_linkedin ? errorClasses : undefined}
+            />
+            {errors.person_linkedin && <FieldError message={errors.person_linkedin} />}
+          </label>
+          <label className={errors.web_url ? 'text-rose-700' : undefined}>
+            {renderLabel('Web', 'web_url')}
+            <Input
+              value={values.web_url}
+              onChange={e => onChange('web_url', e.target.value)}
+              aria-invalid={Boolean(errors.web_url)}
+              className={errors.web_url ? errorClasses : undefined}
+            />
+            {errors.web_url && <FieldError message={errors.web_url} />}
+          </label>
+          <label className={errors.comments ? 'text-rose-700' : undefined}>
+            {renderLabel('Comentarios', 'comments')}
+            <Textarea
+              value={values.comments}
+              onChange={e => onChange('comments', e.target.value)}
+              rows={2}
+              aria-invalid={Boolean(errors.comments)}
+              className={errors.comments ? errorClasses : undefined}
+            />
+            {errors.comments && <FieldError message={errors.comments} />}
+          </label>
+          <label className={errors.AE_mails ? 'text-rose-700' : undefined}>
+            {renderLabel('AE mails', 'AE_mails')}
+            <Textarea
+              value={Array.isArray(values.AE_mails) ? values.AE_mails.join('\n') : (values.AE_mails || '')}
+              onChange={e => onChange('AE_mails', e.target.value)}
+              rows={3}
+              aria-invalid={Boolean(errors.AE_mails)}
+              className={errors.AE_mails ? errorClasses : undefined}
+              placeholder="Un correo por línea"
+            />
+            {errors.AE_mails && <FieldError message={errors.AE_mails} />}
+          </label>
           <div className={`field-group ${errors.lineaNegocio ? 'text-rose-700' : ''}`}>
             <span className="flex items-center gap-1">
               {renderLabel('Línea de negocio', 'lineaNegocio')}

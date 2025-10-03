@@ -3,6 +3,30 @@ import { Input } from './ui/input'
 import { Textarea } from './ui/textarea'
 import { STATUS_OPTIONS } from '../constants/sheet'
 import LineaNegocioDropdown, { sanitizeLineaValues } from './LineaNegocioDropdown'
+import { normalizeTextArray } from '../services/nocodb'
+
+const sanitizeMailValues = (value) => {
+  if (Array.isArray(value)) return normalizeTextArray(value)
+  if (typeof value === 'string') return normalizeTextArray(value)
+  if (value == null) return []
+  return normalizeTextArray([value])
+}
+
+const toMailDraftArray = (value) => {
+  if (typeof value === 'string') {
+    const text = value.replace(/\r/g, '')
+    return text.split('\n').map(item => item.trim())
+  }
+  if (Array.isArray(value)) {
+    return value.map(item => {
+      if (typeof item === 'string') return item.trim()
+      if (item == null) return ''
+      return String(item).trim()
+    })
+  }
+  if (value == null) return []
+  return [String(value)]
+}
 
 export default function SheetTable({
   columns,
@@ -23,17 +47,21 @@ export default function SheetTable({
 }) {
   // Track value at focus-time per cell to decide if blur should trigger save
   const focusValuesRef = React.useRef(new Map())
-  const serializeValue = React.useCallback((val) => {
-    if (Array.isArray(val)) return JSON.stringify(sanitizeLineaValues(val))
+  const serializeValue = React.useCallback((key, val) => {
+    if (Array.isArray(val)) {
+      if (key === 'lineaNegocio') return JSON.stringify(sanitizeLineaValues(val))
+      if (key === 'AE_mails') return JSON.stringify(sanitizeMailValues(val))
+      return JSON.stringify(val)
+    }
     if (val === null || val === undefined) return ''
     return String(val)
   }, [])
   const setFocusVal = (rowId, key, val) => {
-    focusValuesRef.current.set(`${rowId}:${key}`, serializeValue(val))
+    focusValuesRef.current.set(`${rowId}:${key}`, serializeValue(key, val))
   }
   const changedSinceFocus = (rowId, key, val) => {
     const start = focusValuesRef.current.get(`${rowId}:${key}`)
-    return (start ?? '') !== serializeValue(val)
+    return (start ?? '') !== serializeValue(key, val)
   }
   const allSelected = rows.length > 0 && rows.every(r => selectedIds.has(r.id))
   return (
@@ -253,6 +281,27 @@ function renderCell(row, col, onCellChange, onCellBlur, onCellClick, pending, se
           data-colkey="score"
         />
       )
+    case 'AE_mails': {
+      const draft = toMailDraftArray(row.AE_mails)
+      return wrap(
+        <Textarea
+          value={draft.join('\n')}
+          onChange={e => {
+            const nextDraft = toMailDraftArray(e.target.value)
+            change(nextDraft)
+          }}
+          onFocus={() => setFocusVal(row.id, col.key, draft)}
+          onBlur={e => {
+            const nextDraft = toMailDraftArray(e.target.value)
+            const sanitized = sanitizeMailValues(nextDraft)
+            change(sanitized)
+            triggerBlur(sanitized)
+          }}
+          placeholder="Un correo por línea"
+          rows={3}
+        />
+      )
+    }
     default:
       return wrap(
         <Input
