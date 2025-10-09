@@ -150,6 +150,7 @@ export default function Sheet() {
   const [briefRow, setBriefRow] = React.useState(null)
   const [briefSending, setBriefSending] = React.useState(false)
   const [briefError, setBriefError] = React.useState('')
+  const [briefResponse, setBriefResponse] = React.useState('')
   const initialClientRef = React.useRef(true)
 
   const clientOptions = React.useMemo(() => clients.map(opt => {
@@ -268,6 +269,7 @@ export default function Sheet() {
     setSelectionLocked(true)
     const hasEmails = Array.isArray(briefData.AE_mails) ? briefData.AE_mails.length > 0 : Boolean(briefData.AE_mails)
     setBriefError(hasEmails ? '' : 'Falta completar AE mails antes de enviar')
+    setBriefResponse('')
   }
 
   const closeBrief = () => {
@@ -276,6 +278,7 @@ export default function Sheet() {
     setBriefSending(false)
     setBriefError('')
     setSelectionLocked(false)
+    setBriefResponse('')
   }
 
   const addRow = () => {
@@ -792,8 +795,13 @@ export default function Sheet() {
                 lineas_negocio_ids: sanitizeLineaNegocio(createForm.lineaNegocio || []),
                 archived: false,
               }
-              const rec = await createNocoRecord(baseUrl, token, payload)
-              const row = mapRecordToRow(rec ?? { ...payload, id: null })
+              const sanitizedPayload = { ...payload }
+              delete sanitizedPayload.id
+              delete sanitizedPayload.recordId
+              delete sanitizedPayload.record_id
+              console.log('[Sheet][CREATE][payload]', JSON.stringify(sanitizedPayload, null, 2))
+              const rec = await createNocoRecord(baseUrl, token, sanitizedPayload)
+              const row = mapRecordToRow(rec ?? { ...sanitizedPayload, id: null })
               setRows(prev => [row, ...prev])
               // clear any selection after successful create
               setSelectedIds(new Set())
@@ -837,6 +845,7 @@ export default function Sheet() {
         fields={BRIEF_FIELDS}
         sending={briefSending}
         error={briefError}
+        responseMessage={briefResponse}
         onClose={closeBrief}
         onConfirm={async () => {
           if (!briefRow) return
@@ -868,6 +877,7 @@ export default function Sheet() {
           try {
             setBriefSending(true)
             setBriefError('')
+            setBriefResponse('')
             const res = await fetch(BRIEF_WEBHOOK_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -881,14 +891,16 @@ export default function Sheet() {
             try {
               const text = await res.text()
               console.log('[Brief][POST] response', text)
+              setBriefResponse(text || 'Brief enviado correctamente.')
             } catch (e) {
               console.log('[Brief][POST] response unreadable', e)
+              setBriefResponse('Brief enviado correctamente.')
             }
             toast.success(`Brief enviado para ${briefRow.company || 'registro'}`)
-            closeBrief()
           } catch (err) {
             console.warn('[Brief][POST] error', err)
             setBriefError(`No se pudo enviar el brief: ${err?.message || 'fallo'}`)
+            setBriefResponse('')
           } finally {
             setBriefSending(false)
           }

@@ -204,6 +204,9 @@ export async function archiveNocoRecords(baseUrl, token, ids, signal) {
 
 function normalizePayloadForApi(payload = {}) {
   const body = { ...payload }
+  if ('id' in body) delete body.id
+  if ('recordId' in body) delete body.recordId
+  if ('record_id' in body) delete body.record_id
   if ('AE_mails' in body) {
     const normalized = normalizeTextArray(body.AE_mails)
     delete body.AE_mails
