@@ -854,6 +854,18 @@ export default function Sheet() {
             setBriefError('Falta completar AE mails antes de enviar')
             return
           }
+          const { id: resolvedClientId } = resolveClientSelection(briefRow.cliente)
+          let briefClientId = resolvedClientId ?? null
+          if (briefClientId == null) {
+            if (typeof briefRow.clientId === 'number') {
+              briefClientId = briefRow.clientId
+            } else if (typeof briefRow.clientId === 'string' && /^\d+$/.test(briefRow.clientId.trim())) {
+              briefClientId = Number(briefRow.clientId.trim())
+            } else {
+              const mappedId = clientIdMap.get(briefRow.cliente)
+              if (mappedId != null) briefClientId = mappedId
+            }
+          }
           const payload = {
             recordId: briefRow.recordId ?? briefRow.id ?? null,
             company: briefRow.company ?? '',
@@ -872,6 +884,7 @@ export default function Sheet() {
             comments: briefRow.comments ?? '',
             ae_mails: emails,
             lineaNegocio: Array.isArray(briefRow.lineaNegocio) ? briefRow.lineaNegocio : [],
+            client_id: briefClientId,
             timestamp: new Date().toISOString(),
           }
           try {

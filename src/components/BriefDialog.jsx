@@ -46,6 +46,33 @@ export default function BriefDialog({
   error = '',
   responseMessage = '',
 }) {
+
+  const parsedResponse = React.useMemo(() => {
+    if (!responseMessage) return null
+    try {
+      return JSON.parse(responseMessage)
+    } catch {
+      return null
+    }
+  }, [responseMessage])
+
+  const structuredResponse = React.useMemo(() => {
+    if (!parsedResponse) return null
+    const list = Array.isArray(parsedResponse) ? parsedResponse : [parsedResponse]
+    const normalized = list
+      .map(item => {
+        if (!item || typeof item !== 'object') return null
+        const rawHeading = item.Heading ?? item.heading ?? item.title ?? ''
+        const rawLink = item['Link del Brief'] ?? item.link ?? item.url ?? ''
+        const heading = rawHeading ? String(rawHeading).trim() : ''
+        const link = rawLink ? String(rawLink).trim() : ''
+        if (!heading && !link) return null
+        return { heading, link }
+      })
+      .filter(Boolean)
+    return normalized.length ? normalized : null
+  }, [parsedResponse])
+
   if (!open || !row) return null
   const emailsLabel = formatEmails(row.AE_mails)
   const showResponse = Boolean(responseMessage && !error)
@@ -86,7 +113,31 @@ export default function BriefDialog({
           {error && <p className="brief-dialog__error">{error}</p>}
           {showResponse && (
             <div className="brief-dialog__response">
-              <pre>{responseText}</pre>
+              {structuredResponse ? (
+                structuredResponse.map((item, index) => (
+                  <div key={index} className="brief-dialog__response-item">
+                    {item.heading && (
+                      <h3 className="brief-dialog__response-heading">
+                        {item.heading}
+                      </h3>
+                    )}
+                    {item.link && (
+                      <p className="brief-dialog__response-link">
+                        <a
+                          href={item.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="brief-dialog__response-anchor"
+                        >
+                          Ver Brief
+                        </a>
+                      </p>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <pre>{responseText}</pre>
+              )}
             </div>
           )}
         </div>

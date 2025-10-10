@@ -381,6 +381,26 @@ a.link { color: var(--link); }
   padding: 16px 20px;
   border-top: 1px solid hsl(var(--border));
 }
+.brief-dialog__response-item {
+  margin: 0 0 12px;
+}
+.brief-dialog__response-item:last-of-type {
+  margin-bottom: 0;
+}
+.brief-dialog__response-heading {
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+.brief-dialog__response-link {
+  margin: 0;
+}
+.brief-dialog__response-anchor {
+  color: #2563eb;
+  text-decoration: underline;
+  font-weight: 600;
+}
 
 /* Inline field loader */
 .field-wrap { position: relative; }
