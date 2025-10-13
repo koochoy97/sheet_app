@@ -45,9 +45,59 @@ const BRIEF_FIELDS = [
   { key: 'web_url', label: 'Web' },
   { key: 'comments', label: 'Comentarios' },
   { key: 'AE_mails', label: 'AE mails' },
+  { key: 'clientSdrDisplay', label: 'SDR - SDR Mail' },
+  { key: 'clientTeamLeadDisplay', label: 'Team Lead - Team Lead Mail' },
 ]
 
 const BRIEF_WEBHOOK_URL = 'https://n8n.wearesiete.com/webhook/f98f5529-8ee3-4dda-be59-51a0991e8b2d'
+
+const CONTACT_WARNING_MESSAGE = 'No se encontró información de SDR/Team Lead para este cliente. Revisa la carga de clientes en el schema core.'
+
+const normalizeContactPiece = (value) => {
+  if (value === null || value === undefined) return ''
+  return String(value).trim()
+}
+
+const buildContactDisplay = (name, mail) => {
+  const nameText = normalizeContactPiece(name)
+  const mailText = normalizeContactPiece(mail)
+  if (nameText && mailText) return `${nameText} - ${mailText}`
+  if (nameText) return nameText
+  if (mailText) return mailText
+  return ''
+}
+
+const EMPTY_CONTACT_META = {
+  sdr: '',
+  sdrMail: '',
+  teamLead: '',
+  teamLeadMail: '',
+  hasContactData: false,
+}
+
+const normalizeContactMeta = (meta) => {
+  if (!meta || typeof meta !== 'object') {
+    return { ...EMPTY_CONTACT_META }
+  }
+  const sdr = normalizeContactPiece(meta.sdr)
+  const sdrMail = normalizeContactPiece(meta.sdrMail)
+  const teamLead = normalizeContactPiece(meta.teamLead)
+  const teamLeadMail = normalizeContactPiece(meta.teamLeadMail)
+  const hasContactData = Boolean(
+    meta.hasContactData ||
+    sdr ||
+    sdrMail ||
+    teamLead ||
+    teamLeadMail
+  )
+  return {
+    sdr,
+    sdrMail,
+    teamLead,
+    teamLeadMail,
+    hasContactData,
+  }
+}
 
 const sanitizeLineaNegocio = (value) => {
   if (!Array.isArray(value)) return []
@@ -156,13 +206,19 @@ export default function Sheet() {
   const clientOptions = React.useMemo(() => clients.map(opt => {
     if (typeof opt === 'string') {
       const isAll = opt === ALL_CLIENTS
-      return { value: opt, label: isAll ? 'Todos los clientes' : opt, id: null }
+      return {
+        value: opt,
+        label: isAll ? 'Todos los clientes' : opt,
+        id: null,
+        meta: { ...EMPTY_CONTACT_META },
+      }
     }
     const rawValue = opt?.value ?? opt?.id ?? opt?.label ?? ''
     const value = String(rawValue)
     const label = opt?.label ?? (value === ALL_CLIENTS ? 'Todos los clientes' : value)
     const id = opt?.id != null ? opt.id : (opt?.value != null && /^\d+$/.test(String(opt.value)) ? Number(opt.value) : null)
-    return { value, label, id }
+    const meta = normalizeContactMeta(opt?.meta)
+    return { value, label, id, meta }
   }), [clients])
 
   const clientFilterOptions = React.useMemo(() => {
@@ -183,6 +239,28 @@ export default function Sheet() {
       if (opt.value) map.set(opt.value, id)
       if (opt.label) map.set(opt.label, id)
       if (id != null) map.set(String(id), id)
+    }
+    return map
+  }, [clientOptions])
+
+  const clientDetailMap = React.useMemo(() => {
+    const map = new Map()
+    for (const opt of clientOptions) {
+      const meta = normalizeContactMeta(opt?.meta)
+      const keys = []
+      if (opt.value) keys.push(opt.value)
+      if (opt.label) keys.push(opt.label)
+      const id = opt.id ?? (opt.value && /^\d+$/.test(opt.value) ? Number(opt.value) : null)
+      if (id != null) {
+        keys.push(id)
+        keys.push(String(id))
+      }
+      for (const key of keys) {
+        if (key === null || key === undefined || key === '') continue
+        if (!map.has(key)) {
+          map.set(key, meta)
+        }
+      }
     }
     return map
   }, [clientOptions])
@@ -259,10 +337,38 @@ export default function Sheet() {
     const row = rows.find(r => r.id === id)
     if (!row) return
     const selectedLabel = getSelectedClientLabel()
+    const rawCliente = row.cliente || selectedLabel || ''
+    const trimmedCliente = rawCliente.trim()
+    const candidateKeys = []
+    if (row.clientId !== null && row.clientId !== undefined) {
+      candidateKeys.push(row.clientId)
+      const numericId = Number(row.clientId)
+      if (Number.isFinite(numericId)) candidateKeys.push(numericId)
+      candidateKeys.push(String(row.clientId))
+    }
+    if (trimmedCliente) candidateKeys.push(trimmedCliente)
+    if (clientFilter && clientFilter !== ALL_CLIENTS) candidateKeys.push(clientFilter)
+    let contactMeta = null
+    for (const key of candidateKeys) {
+      if (key === null || key === undefined || key === '') continue
+      const found = clientDetailMap.get(key)
+      if (found) {
+        contactMeta = found
+        break
+      }
+    }
+    const normalizedContacts = normalizeContactMeta(contactMeta)
     const briefData = {
       ...row,
-      cliente: row.cliente || selectedLabel || '',
+      cliente: trimmedCliente || rawCliente,
       AE_mails: Array.isArray(row.AE_mails) ? row.AE_mails : sanitizeTextArray(row.AE_mails),
+      clientSdr: normalizedContacts.sdr,
+      clientSdrMail: normalizedContacts.sdrMail,
+      clientTeamLead: normalizedContacts.teamLead,
+      clientTeamLeadMail: normalizedContacts.teamLeadMail,
+      clientSdrDisplay: buildContactDisplay(normalizedContacts.sdr, normalizedContacts.sdrMail),
+      clientTeamLeadDisplay: buildContactDisplay(normalizedContacts.teamLead, normalizedContacts.teamLeadMail),
+      clientContactWarning: normalizedContacts.hasContactData ? '' : CONTACT_WARNING_MESSAGE,
     }
     setBriefRow(briefData)
     setBriefOpen(true)

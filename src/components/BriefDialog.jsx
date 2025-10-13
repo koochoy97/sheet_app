@@ -108,6 +108,9 @@ export default function BriefDialog({
                   )
                 })}
               </dl>
+              {row.clientContactWarning && (
+                <p className="brief-dialog__warning">{row.clientContactWarning}</p>
+              )}
             </>
           )}
           {error && <p className="brief-dialog__error">{error}</p>}
