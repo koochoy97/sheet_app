@@ -5,6 +5,66 @@ const CLIENTS_URL = 'https://rest.wearesiete.com/clientes'
 const CLIENT_LINES_URL = 'https://rest.wearesiete.com/clientes_lineas_negocio'
 const DEFAULT_CLIENT_ID = '46'
 
+const normalizeClientKey = (key) => {
+  if (!key && key !== 0) return ''
+  return String(key).toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+const toContactString = (value) => {
+  if (Array.isArray(value)) {
+    return value.map(item => (item == null ? '' : String(item).trim())).filter(Boolean).join(', ')
+  }
+  if (value === null || value === undefined) return ''
+  return String(value).trim()
+}
+
+const extractClientContacts = (record) => {
+  if (!record || typeof record !== 'object') {
+    return { sdr: '', sdrMail: '', teamLead: '', teamLeadMail: '', hasContactData: false }
+  }
+
+  let sdr = ''
+  let sdrMail = ''
+  let teamLead = ''
+  let teamLeadMail = ''
+
+  for (const [rawKey, rawValue] of Object.entries(record)) {
+    const key = normalizeClientKey(rawKey)
+    if (!key) continue
+    const value = toContactString(rawValue)
+    if (!value) continue
+
+    const isMailKey = key.includes('mail') || key.includes('email')
+    const isSdrKey = key.includes('sdr')
+    const isTeamLeadKey = key.includes('teamlead') || (key.includes('team') && key.includes('lead'))
+
+    if (isSdrKey && !isMailKey && !sdr) {
+      sdr = value
+      continue
+    }
+    if (isSdrKey && isMailKey && !sdrMail) {
+      sdrMail = value
+      continue
+    }
+    if (isTeamLeadKey && !isMailKey && !teamLead) {
+      teamLead = value
+      continue
+    }
+    if (isTeamLeadKey && isMailKey && !teamLeadMail) {
+      teamLeadMail = value
+      continue
+    }
+  }
+
+  return {
+    sdr,
+    sdrMail,
+    teamLead,
+    teamLeadMail,
+    hasContactData: Boolean(sdr || sdrMail || teamLead || teamLeadMail),
+  }
+}
+
 export function useNocoDB({ baseUrl, ALL }) {
   const token = import.meta.env.VITE_NOCODB_TOKEN
   const [rows, setRows] = useState([])
@@ -65,7 +125,14 @@ export function useNocoDB({ baseUrl, ALL }) {
           const id = rec.id ?? rec.Id ?? rec.client_id ?? null
           const value = id != null ? String(id) : label
           if (!value || map.has(value)) continue
-          map.set(value, { value, label: label || value, id: id != null ? Number(id) : null })
+          const meta = extractClientContacts(rec)
+          const numericId = Number(id)
+          map.set(value, {
+            value,
+            label: label || value,
+            id: id != null && Number.isFinite(numericId) ? numericId : null,
+            meta,
+          })
         }
         const options = Array.from(map.values()).sort((a,b)=>a.label.localeCompare(b.label))
         if (options.length) setAllClients(options)
