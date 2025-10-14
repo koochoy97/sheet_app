@@ -32,6 +32,7 @@ const REQUIRED_FIELDS = [
 const BRIEF_FIELDS = [
   { key: 'company', label: 'Company' },
   { key: 'cliente', label: 'Cliente' },
+  { key: 'lineaNegocioDisplay', label: 'Línea de negocio' },
   { key: 'telefono_cliente', label: 'Teléfono cliente' },
   { key: 'fecha', label: 'Fecha de celebración' },
   { key: 'status', label: 'Status' },
@@ -360,10 +361,45 @@ export default function Sheet() {
       }
     }
     const normalizedContacts = normalizeContactMeta(contactMeta)
+    const lineValues = Array.isArray(row.lineaNegocio) ? row.lineaNegocio : []
+    const lineaLabels = []
+    for (const rawVal of lineValues) {
+      const candidates = [rawVal]
+      const numericVal = Number(rawVal)
+      if (Number.isFinite(numericVal)) candidates.push(numericVal)
+      if (rawVal !== null && rawVal !== undefined) candidates.push(String(rawVal))
+      let label = ''
+      for (const key of candidates) {
+        if (key === null || key === undefined || key === '') continue
+        const found = lineLabelLookup.get(key)
+        if (found) {
+          label = found
+          break
+        }
+      }
+      if (!label && rawVal !== null && rawVal !== undefined && rawVal !== '') {
+        label = String(rawVal)
+      }
+      if (label) lineaLabels.push(label)
+    }
+    const uniqueLineaLabels = []
+    const seenLinea = new Set()
+    for (const label of lineaLabels) {
+      const trimmed = (label || '').trim()
+      if (!trimmed) continue
+      const key = trimmed.toLowerCase()
+      if (seenLinea.has(key)) continue
+      seenLinea.add(key)
+      uniqueLineaLabels.push(trimmed)
+    }
+    const lineaNegocioDisplay = uniqueLineaLabels.join(', ')
     const briefData = {
       ...row,
       cliente: trimmedCliente || rawCliente,
       AE_mails: Array.isArray(row.AE_mails) ? row.AE_mails : sanitizeTextArray(row.AE_mails),
+      lineaNegocioDisplay,
+      lineaNegocioNamesList: uniqueLineaLabels,
+      lineaNegocioNames: lineaNegocioDisplay,
       clientSdr: normalizedContacts.sdr,
       clientSdrMail: normalizedContacts.sdrMail,
       clientTeamLead: normalizedContacts.teamLead,
@@ -978,6 +1014,18 @@ export default function Sheet() {
               if (mappedId != null) briefClientId = mappedId
             }
           }
+          const lineaNegocioNames = (() => {
+            if (typeof briefRow.lineaNegocioNames === 'string' && briefRow.lineaNegocioNames.trim()) {
+              return briefRow.lineaNegocioNames.trim()
+            }
+            if (Array.isArray(briefRow.lineaNegocioNamesList) && briefRow.lineaNegocioNamesList.length) {
+              return briefRow.lineaNegocioNamesList.join(', ')
+            }
+            if (typeof briefRow.lineaNegocioDisplay === 'string' && briefRow.lineaNegocioDisplay.trim()) {
+              return briefRow.lineaNegocioDisplay.trim()
+            }
+            return ''
+          })()
           const payload = {
             recordId: briefRow.recordId ?? briefRow.id ?? null,
             company: briefRow.company ?? '',
@@ -997,7 +1045,7 @@ export default function Sheet() {
             web_url: briefRow.web_url ?? '',
             comments: briefRow.comments ?? '',
             ae_mails: emails,
-            lineaNegocio: Array.isArray(briefRow.lineaNegocio) ? briefRow.lineaNegocio : [],
+            lineaNegocio: lineaNegocioNames,
             client_id: briefClientId,
             timestamp: new Date().toISOString(),
           }
