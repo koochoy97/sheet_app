@@ -38,6 +38,8 @@ export function mapRecordToRow(rec) {
     fecha: rec.celebration_date ?? '',
     status: rec.status ?? '',
     kdm: rec.kdm ?? '',
+    kdm_mail: rec.kdm_mail ?? rec.kdmMail ?? rec.mail_kdm ?? '',
+    telefono_cliente: rec.telefono_cliente ?? rec.telefonoCliente ?? rec.client_phone ?? rec.phone_cliente ?? '',
     tituloKdm: rec.kdm_title ?? '',
     industria: rec.industry ?? '',
     empleados: rec.employers_quantity ?? '',

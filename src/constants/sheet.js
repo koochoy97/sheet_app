@@ -12,6 +12,8 @@ export const COLUMNS = [
   { key: 'status', label: 'Status' },
   { key: 'kdm', label: 'KDM' },
   { key: 'tituloKdm', label: 'Título del KDM' },
+  { key: 'kdm_mail', label: 'Mail KDM' },
+  { key: 'telefono_cliente', label: 'Teléfono cliente' },
   { key: 'industria', label: 'Industria' },
   { key: 'empleados', label: '# Empleados' },
   { key: 'score', label: 'Score' },

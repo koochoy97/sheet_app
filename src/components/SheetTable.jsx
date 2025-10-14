@@ -4,6 +4,7 @@ import { Textarea } from './ui/textarea'
 import { STATUS_OPTIONS } from '../constants/sheet'
 import LineaNegocioDropdown, { sanitizeLineaValues } from './LineaNegocioDropdown'
 import { normalizeTextArray } from '../services/nocodb'
+import CommentPreview from './CommentPreview'
 
 const sanitizeMailValues = (value) => {
   if (Array.isArray(value)) return normalizeTextArray(value)
@@ -246,6 +247,32 @@ function renderCell(row, col, onCellChange, onCellBlur, onCellClick, pending, se
         />
       )
     }
+    case 'kdm_mail': {
+      const value = row.kdm_mail || ''
+      return wrap(
+        <Input
+          type="email"
+          value={value}
+          readOnly
+          onFocus={() => onCellClick && onCellClick(row)}
+          onClick={() => onCellClick && onCellClick(row)}
+          placeholder=""
+        />
+      )
+    }
+    case 'telefono_cliente': {
+      const value = row.telefono_cliente || ''
+      return wrap(
+        <Input
+          type="tel"
+          value={value}
+          readOnly
+          onFocus={() => onCellClick && onCellClick(row)}
+          onClick={() => onCellClick && onCellClick(row)}
+          placeholder=""
+        />
+      )
+    }
     case 'feedback':
       return wrap(
         <Textarea
@@ -302,6 +329,20 @@ function renderCell(row, col, onCellChange, onCellBlur, onCellClick, pending, se
         />
       )
     }
+    case 'comments':
+      return wrap(
+        <CommentPreview
+          value={row.comments || ''}
+          onChange={e => change(e.target.value)}
+          onFocus={e => setFocusVal(row.id, col.key, e.target.value)}
+          onBlur={e => {
+            const v = e.target.value
+            triggerBlur(v)
+          }}
+          disabled={disableSelection}
+          placeholder=""
+        />
+      )
     default:
       return wrap(
         <Input
