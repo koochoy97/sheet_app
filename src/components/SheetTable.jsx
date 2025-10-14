@@ -253,10 +253,17 @@ function renderCell(row, col, onCellChange, onCellBlur, onCellClick, pending, se
         <Input
           type="email"
           value={value}
-          readOnly
-          onFocus={() => onCellClick && onCellClick(row)}
-          onClick={() => onCellClick && onCellClick(row)}
+          onChange={e => change(e.target.value)}
+          onFocus={e => {
+            setFocusVal(row.id, col.key, e.target.value)
+            onCellClick && onCellClick(row)
+          }}
+          onBlur={e => {
+            const v = e.target.value
+            triggerBlur(v)
+          }}
           placeholder=""
+          disabled={disableSelection}
         />
       )
     }
@@ -266,10 +273,17 @@ function renderCell(row, col, onCellChange, onCellBlur, onCellClick, pending, se
         <Input
           type="tel"
           value={value}
-          readOnly
-          onFocus={() => onCellClick && onCellClick(row)}
-          onClick={() => onCellClick && onCellClick(row)}
+          onChange={e => change(e.target.value)}
+          onFocus={e => {
+            setFocusVal(row.id, col.key, e.target.value)
+            onCellClick && onCellClick(row)
+          }}
+          onBlur={e => {
+            const v = e.target.value
+            triggerBlur(v)
+          }}
           placeholder=""
+          disabled={disableSelection}
         />
       )
     }

@@ -36,6 +36,20 @@ const formatResponseMessage = (value) => {
   }
 }
 
+const PRIMARY_FIELD_KEYS = [
+  'company',
+  'cliente',
+  'lineaNegocioDisplay',
+  'fecha',
+  'status',
+  'kdm',
+  'kdm_mail',
+  'telefono_cliente',
+  'AE_mails',
+  'clientSdrDisplay',
+  'clientTeamLeadDisplay',
+]
+
 export default function BriefDialog({
   open,
   row,
@@ -46,6 +60,8 @@ export default function BriefDialog({
   error = '',
   responseMessage = '',
 }) {
+
+  const [showDetails, setShowDetails] = React.useState(false)
 
   const parsedResponse = React.useMemo(() => {
     if (!responseMessage) return null
@@ -73,6 +89,22 @@ export default function BriefDialog({
     return normalized.length ? normalized : null
   }, [parsedResponse])
 
+  const fieldBuckets = React.useMemo(() => {
+    const fieldMap = new Map()
+    for (const field of fields) {
+      if (!field || !field.key) continue
+      fieldMap.set(field.key, field)
+    }
+    const primary = PRIMARY_FIELD_KEYS.map(key => fieldMap.get(key)).filter(Boolean)
+    const seen = new Set(primary.map(f => f.key))
+    const extra = fields.filter(field => field && field.key && !seen.has(field.key))
+    return { primary, extra }
+  }, [fields])
+
+  React.useEffect(() => {
+    setShowDetails(false)
+  }, [row])
+
   if (!open || !row) return null
   const emailsLabel = formatEmails(row.AE_mails)
   const showResponse = Boolean(responseMessage && !error)
@@ -98,7 +130,7 @@ export default function BriefDialog({
               </h4>
               <p className="brief-dialog__intro">Revisa la información antes de enviar:</p>
               <dl className="brief-dialog__summary">
-                {fields.map(field => {
+                {fieldBuckets.primary.map(field => {
                   const value = formatValue(row[field.key])
                   return (
                     <React.Fragment key={field.key}>
@@ -108,6 +140,30 @@ export default function BriefDialog({
                   )
                 })}
               </dl>
+              {fieldBuckets.extra.length > 0 && (
+                <div className="brief-dialog__extra">
+                  <button
+                    type="button"
+                    className="brief-dialog__toggle"
+                    onClick={() => setShowDetails(prev => !prev)}
+                  >
+                    {showDetails ? 'Ocultar detalles' : 'Mostrar más detalles'}
+                  </button>
+                  {showDetails && (
+                    <dl className="brief-dialog__summary brief-dialog__summary--extra">
+                      {fieldBuckets.extra.map(field => {
+                        const value = formatValue(row[field.key])
+                        return (
+                          <React.Fragment key={field.key}>
+                            <dt>{field.label}</dt>
+                            <dd>{value || <span className="brief-dialog__placeholder">—</span>}</dd>
+                          </React.Fragment>
+                        )
+                      })}
+                    </dl>
+                  )}
+                </div>
+              )}
               {row.clientContactWarning && (
                 <p className="brief-dialog__warning">{row.clientContactWarning}</p>
               )}

@@ -357,6 +357,9 @@ a.link { color: var(--link); }
   gap: 6px 12px;
   font-size: 14px;
 }
+.brief-dialog__summary--extra {
+  margin-top: 12px;
+}
 .brief-dialog__summary dt {
   font-weight: 600;
   color: #1f2937;
@@ -383,6 +386,26 @@ a.link { color: var(--link); }
 }
 .brief-dialog__placeholder {
   color: #94a3b8;
+}
+.brief-dialog__extra {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+.brief-dialog__toggle {
+  appearance: none;
+  border: 1px solid hsl(var(--border));
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #f8fafc;
+  color: #0f172a;
+  justify-self: start;
+  cursor: pointer;
+}
+.brief-dialog__toggle:hover {
+  background: #e2e8f0;
 }
 .brief-dialog__actions {
   display: flex;
