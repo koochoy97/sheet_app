@@ -52,6 +52,20 @@ const BRIEF_FIELDS = [
   { key: 'clientTeamLeadDisplay', label: 'Team Lead - Team Lead Mail' },
 ]
 
+const BRIEF_REQUIRED_FOR_SEND = [
+  { key: 'company', label: 'Company' },
+  { key: 'company_linkedin', label: 'LinkedIn empresa' },
+  { key: 'web_url', label: 'Web' },
+  { key: 'industria', label: 'Industria' },
+  { key: 'empleados', label: '# Empleados' },
+  { key: 'fecha', label: 'Fecha de celebración' },
+  { key: 'tituloKdm', label: 'Título del KDM' },
+  { key: 'kdm_mail', label: 'Mail KDM' },
+  { key: 'kdm', label: 'Puesto KDM' },
+  { key: 'person_linkedin', label: 'LinkedIn persona' },
+  { key: 'comments', label: 'Comentario' },
+]
+
 const BRIEF_WEBHOOK_URL = 'https://n8n.wearesiete.com/webhook/f98f5529-8ee3-4dda-be59-51a0991e8b2d'
 
 const CONTACT_WARNING_MESSAGE = 'No se encontró información de SDR/Team Lead para este cliente. Revisa la carga de clientes en el schema core.'
@@ -997,6 +1011,18 @@ export default function Sheet() {
         onClose={closeBrief}
         onConfirm={async () => {
           if (!briefRow) return
+          const missingRequired = BRIEF_REQUIRED_FOR_SEND.filter(field => {
+            const value = briefRow[field.key]
+            if (Array.isArray(value)) return value.length === 0
+            if (value === null || value === undefined) return true
+            const str = typeof value === 'string' ? value : String(value)
+            return str.trim() === ''
+          })
+          if (missingRequired.length) {
+            setBriefError(`Completa los campos obligatorios: ${missingRequired.map(f => f.label).join(', ')}`)
+            setBriefResponse('')
+            return
+          }
           const emails = Array.isArray(briefRow.AE_mails) ? briefRow.AE_mails : normalizeTextArray(briefRow.AE_mails)
           if (!emails.length) {
             setBriefError('Falta completar AE mails antes de enviar')
