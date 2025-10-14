@@ -95,6 +95,28 @@ export default function CreateSlide({
             />
             {errors.kdm && <FieldError message={errors.kdm} />}
           </label>
+          <label className={errors.kdm_mail ? 'text-rose-700' : undefined}>
+            {renderLabel('Mail KDM', 'kdm_mail')}
+            <Input
+              type="email"
+              value={values.kdm_mail}
+              onChange={e => onChange('kdm_mail', e.target.value)}
+              aria-invalid={Boolean(errors.kdm_mail)}
+              className={errors.kdm_mail ? errorClasses : undefined}
+            />
+            {errors.kdm_mail && <FieldError message={errors.kdm_mail} />}
+          </label>
+          <label className={errors.telefono_cliente ? 'text-rose-700' : undefined}>
+            {renderLabel('Teléfono cliente', 'telefono_cliente')}
+            <Input
+              type="tel"
+              value={values.telefono_cliente}
+              onChange={e => onChange('telefono_cliente', e.target.value)}
+              aria-invalid={Boolean(errors.telefono_cliente)}
+              className={errors.telefono_cliente ? errorClasses : undefined}
+            />
+            {errors.telefono_cliente && <FieldError message={errors.telefono_cliente} />}
+          </label>
           <label className={errors.tituloKdm ? 'text-rose-700' : undefined}>
             {renderLabel('Título del KDM', 'tituloKdm')}
             <Input
