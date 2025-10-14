@@ -219,6 +219,8 @@ body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, H
 .sheet-table col.col-fecha { width: 20ch; }
 .sheet-table col.col-status { width: 18ch; }
 .sheet-table col.col-kdm { width: 20ch; }
+.sheet-table col.col-kdm_mail { width: 28ch; }
+.sheet-table col.col-telefono_cliente { width: 20ch; }
 .sheet-table col.col-tituloKdm { width: 24ch; }
 .sheet-table col.col-industria { width: 20ch; }
 .sheet-table col.col-empleados { width: 16ch; }
@@ -408,6 +410,63 @@ a.link { color: var(--link); }
   color: #2563eb;
   text-decoration: underline;
   font-weight: 600;
+}
+
+.comment-preview-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 1150;
+}
+.comment-preview-card {
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 18px 60px rgba(15, 23, 42, 0.18);
+  width: min(460px, 100%);
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+.comment-preview-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.comment-preview-card__header h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+.comment-preview-card__close {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  color: #475569;
+}
+.comment-preview-card__close:hover {
+  color: #1e293b;
+}
+.comment-preview-card__textarea {
+  border: none;
+  border-radius: 0 0 14px 14px;
+  box-shadow: none;
+  padding: 18px;
+  resize: none;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 14px;
+}
+.comment-preview-card__textarea:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px #2563eb;
 }
 
 /* Inline field loader */

@@ -32,10 +32,12 @@ const REQUIRED_FIELDS = [
 const BRIEF_FIELDS = [
   { key: 'company', label: 'Company' },
   { key: 'cliente', label: 'Cliente' },
+  { key: 'telefono_cliente', label: 'Teléfono cliente' },
   { key: 'fecha', label: 'Fecha de celebración' },
   { key: 'status', label: 'Status' },
   { key: 'kdm', label: 'KDM' },
   { key: 'tituloKdm', label: 'Título del KDM' },
+  { key: 'kdm_mail', label: 'Mail KDM' },
   { key: 'industria', label: 'Industria' },
   { key: 'empleados', label: '# Empleados' },
   { key: 'score', label: 'Score' },
@@ -576,6 +578,8 @@ export default function Sheet() {
       celebration_date: row.fecha ?? '',
       status: row.status ?? '',
       kdm: row.kdm ?? '',
+      kdm_mail: row.kdm_mail ?? '',
+      telefono_cliente: row.telefono_cliente ?? '',
       kdm_title: row.tituloKdm ?? '',
       industry: row.industria ?? '',
       employers_quantity: row.empleados ?? '',
@@ -595,6 +599,8 @@ export default function Sheet() {
       case 'fecha': payload.celebration_date = value ?? '' ; break
       case 'status': payload.status = value ?? '' ; break
       case 'kdm': payload.kdm = value ?? '' ; break
+      case 'kdm_mail': payload.kdm_mail = value ?? '' ; break
+      case 'telefono_cliente': payload.telefono_cliente = value ?? '' ; break
       case 'tituloKdm': payload.kdm_title = value ?? '' ; break
       case 'industria': payload.industry = value ?? '' ; break
       case 'empleados': payload.employers_quantity = value ?? '' ; break
@@ -976,9 +982,11 @@ export default function Sheet() {
             recordId: briefRow.recordId ?? briefRow.id ?? null,
             company: briefRow.company ?? '',
             cliente: briefRow.cliente ?? '',
+            telefono_cliente: briefRow.telefono_cliente ?? '',
             fecha: briefRow.fecha ?? '',
             status: briefRow.status ?? '',
             kdm: briefRow.kdm ?? '',
+            kdm_mail: briefRow.kdm_mail ?? '',
             tituloKdm: briefRow.tituloKdm ?? '',
             industria: briefRow.industria ?? '',
             empleados: briefRow.empleados ?? '',
