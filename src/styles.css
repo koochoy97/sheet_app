@@ -235,6 +235,76 @@ body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, H
 .sheet-table col.col-lineaNegocio { width: 24ch; }
 /* removed actions column */
 
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 32px;
+  padding: 40px 24px;
+  background: #ffffff;
+}
+.login-page > .login-logo {
+  width: 300px;
+  height: auto;
+}
+.login-card {
+  width: min(420px, 100%);
+  padding: 36px 32px 32px;
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 26px 70px rgba(59, 130, 246, 0.22);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  display: grid;
+  gap: 20px;
+}
+.login-header {
+  text-align: center;
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+}
+.login-brand-title {
+  margin: 0;
+  font-size: 1.65rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+.login-subtitle {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #475569;
+}
+.login-form {
+  display: grid;
+  gap: 16px;
+}
+.login-field {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: #1f2937;
+}
+.login-error {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fee2e2;
+  color: #b91c1c;
+  font-size: 0.85rem;
+}
+.login-submit {
+  width: 100%;
+  justify-content: center;
+  font-size: 1rem;
+}
+.app.login-app {
+  padding: 0;
+  background: transparent;
+  overflow: auto;
+}
+
 /* Frozen leading columns */
 .sheet-table thead th:first-child,
 .sheet-table tbody td:first-child {
@@ -511,7 +581,23 @@ a.link { color: var(--link); }
 .sheet-heading {
   font-size: 32px;
   font-weight: 700;
-  margin: 0 0 16px;
+  margin: 0;
+  color: #0f172a;
+}
+.sheet-heading-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.logout-button {
+  background: #f8fafc;
+  color: #1e293b;
+  border: 1px solid #cbd5f5;
+}
+.logout-button:hover {
+  background: #e2e8f0;
   color: #0f172a;
 }
 
