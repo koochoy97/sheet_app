@@ -13,6 +13,7 @@
     "@radix-ui/react-select": "^2.0.0",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
+    "firebase": "^11.0.1",
     "lucide-react": "^0.460.0",
     "react": "^18.3.1",
     "react-datepicker": "^4.25.0",
