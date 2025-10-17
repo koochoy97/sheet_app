@@ -2,7 +2,6 @@ export const STATUS_OPTIONS = [
   'Completada',
   'No show',
   'Pactada',
-  'Concluida',
   'Reprogramada',
 ]
 
