@@ -511,6 +511,7 @@ export default function Sheet() {
   }
 
   const parseCreatedAtValue = React.useCallback((value) => {
+    if (value === null || value === undefined || value === '') return null
     const buildDate = (year, month, day) => {
       const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
       return Number.isNaN(date.getTime()) ? null : date
