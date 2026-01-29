@@ -1,4 +1,5 @@
 import React from 'react'
+import * as XLSX from 'xlsx'
 import { Toaster, toast } from 'react-hot-toast'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -7,9 +8,10 @@ import SheetTable from './SheetTable'
 import DateFilter from './DateFilter'
 import { useNocoDB } from '../hooks/useNocoDB'
 import { COLUMNS as columns, ALL_CLIENTS, STATUS_OPTIONS } from '../constants/sheet'
-import { createNocoRecord, archiveNocoRecords, mapRecordToRow, normalizeTextArray, updateNocoRecord } from '../services/nocodb'
+import { createNocoRecord, archiveNocoRecords, mapRecordToRow, normalizeTextArray, updateNocoRecord, buildNocoUrl } from '../services/nocodb'
 import CreateSlide from './CreateSlide'
 import BriefDialog from './BriefDialog'
+import ExportDialog from './ExportDialog'
 
 const READ_BASE_URL = 'https://rest.wearesiete.com/siete_service_meetings'
 const WRITE_BASE_URL = READ_BASE_URL
@@ -221,6 +223,9 @@ export default function Sheet() {
   const [briefError, setBriefError] = React.useState('')
   const [briefResponse, setBriefResponse] = React.useState('')
   const initialClientRef = React.useRef(true)
+  const [exportOpen, setExportOpen] = React.useState(false)
+  const [exporting, setExporting] = React.useState(false)
+  const [exportError, setExportError] = React.useState('')
 
   const clientOptions = React.useMemo(() => clients.map(opt => {
     if (typeof opt === 'string') {
@@ -250,6 +255,10 @@ export default function Sheet() {
     }
     return opts
   }, [clientOptions])
+  const exportClientOptions = React.useMemo(
+    () => clientFilterOptions.filter(opt => opt.value && opt.value !== ALL_CLIENTS),
+    [clientFilterOptions]
+  )
 
   const clientIdMap = React.useMemo(() => {
     const map = new Map()
@@ -303,6 +312,10 @@ export default function Sheet() {
     const opt = clientOptions.find(o => o.value === clientFilter)
     return opt?.label ?? ''
   }, [clientFilter, clientOptions])
+  const defaultExportClientValue = React.useMemo(() => {
+    if (!clientFilter || clientFilter === ALL_CLIENTS) return ''
+    return clientFilter
+  }, [clientFilter])
   const toggleRow = (id) => {
     setSelectedIds(prev => {
       const next = new Set(prev)
@@ -496,6 +509,235 @@ export default function Sheet() {
     a.click()
     URL.revokeObjectURL(url)
   }
+
+  const parseCreatedAtValue = React.useCallback((value) => {
+    const buildDate = (year, month, day) => {
+      const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)))
+      return Number.isNaN(date.getTime()) ? null : date
+    }
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()))
+    }
+    if (typeof value === 'number') {
+      const date = new Date(value)
+      if (!Number.isNaN(date.getTime())) {
+        return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+      }
+      return null
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim()
+      if (!trimmed) return null
+      const ymdMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/)
+      if (ymdMatch) {
+        return buildDate(ymdMatch[1], ymdMatch[2], ymdMatch[3])
+      }
+      const dmyMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+      if (dmyMatch) {
+        return buildDate(dmyMatch[3], dmyMatch[2], dmyMatch[1])
+      }
+      const normalized = trimmed.replace(' ', 'T')
+      const parsed = new Date(normalized)
+      if (!Number.isNaN(parsed.getTime())) {
+        return new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate()))
+      }
+    }
+    try {
+      const parsed = new Date(value)
+      if (!Number.isNaN(parsed.getTime())) {
+        return new Date(Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate()))
+      }
+    } catch {}
+    return null
+  }, [])
+
+  const formatCreatedAtDisplay = React.useCallback((value) => {
+    const parsed = parseCreatedAtValue(value)
+    if (!parsed) return ''
+    const pad = (num) => String(num).padStart(2, '0')
+    const day = pad(parsed.getUTCDate())
+    const month = pad(parsed.getUTCMonth() + 1)
+    const year = parsed.getUTCFullYear()
+    return `${day}/${month}/${year}`
+  }, [parseCreatedAtValue])
+
+  const filterArchivedRecords = React.useCallback((records = []) => {
+    const isArchivedValue = (raw) => {
+      if (raw === true) return true
+      if (raw === false) return false
+      if (typeof raw === 'number') return raw === 1
+      if (typeof raw === 'string') {
+        const val = raw.trim().toLowerCase()
+        if (!val) return false
+        return val === 'true' || val === '1'
+      }
+      return false
+    }
+    return records.filter(record => {
+      if (!record || typeof record !== 'object') return true
+      const raw = record.archived ?? record.Archived ?? record.archivado ?? record.isArchived
+      return !isArchivedValue(raw)
+    })
+  }, [])
+
+  const fetchRecordsForExport = React.useCallback(async (clientValue) => {
+    const url = buildNocoUrl(READ_BASE_URL, {
+      clientFilter: clientValue ?? ALL_CLIENTS,
+      ALL: ALL_CLIENTS,
+    })
+    const headers = { 'Accept-Profile': 'prospection' }
+    const res = await fetch(url.toString(), { headers })
+    if (!res.ok) {
+      throw new Error(`Error HTTP ${res.status} al consultar registros`)
+    }
+    const data = await res.json().catch(() => [])
+    const list = Array.isArray(data) ? data : []
+    return filterArchivedRecords(list)
+  }, [filterArchivedRecords])
+
+  const normalizeRecordForExport = React.useCallback((record) => {
+    if (!record || typeof record !== 'object') return {}
+    const normalized = {}
+    for (const [key, value] of Object.entries(record)) {
+      const keyLower = typeof key === 'string' ? key.toLowerCase() : ''
+      if (keyLower === 'archived') {
+        normalized[key] = (value === true || value === 'true' || value === 1) ? 'true' : 'false'
+        continue
+      }
+      if (keyLower === 'created_at') {
+        normalized[key] = formatCreatedAtDisplay(value)
+        continue
+      }
+      if (keyLower === 'celebration_date') {
+        normalized[key] = formatCreatedAtDisplay(value)
+        continue
+      }
+      if (value === null || value === undefined) {
+        normalized[key] = ''
+      } else if (Array.isArray(value)) {
+        normalized[key] = value
+          .map(item => (item === null || item === undefined ? '' : String(item)))
+          .filter(Boolean)
+          .join(', ')
+      } else if (value instanceof Date) {
+        normalized[key] = value.toISOString()
+      } else if (typeof value === 'object') {
+        normalized[key] = JSON.stringify(value)
+      } else {
+        normalized[key] = value
+      }
+    }
+    return normalized
+  }, [formatCreatedAtDisplay])
+
+  const applyDateFormatToSheet = React.useCallback((worksheet, columnKey, format = 'dd/mm/yyyy') => {
+    const excelSerialFromDate = (date) => {
+      const excelEpoch = Date.UTC(1899, 11, 30)
+      const utcMidnight = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
+      return (utcMidnight - excelEpoch) / 86400000
+    }
+    if (!worksheet || !worksheet['!ref']) return
+    const range = XLSX.utils.decode_range(worksheet['!ref'])
+    const headerRow = range.s.r
+    let targetColumn = -1
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const headerAddress = XLSX.utils.encode_cell({ c, r: headerRow })
+      const headerCell = worksheet[headerAddress]
+      if (headerCell && headerCell.v === columnKey) {
+        targetColumn = c
+        break
+      }
+    }
+    if (targetColumn === -1) return
+    for (let r = headerRow + 1; r <= range.e.r; r++) {
+      const addr = XLSX.utils.encode_cell({ c: targetColumn, r })
+      const cell = worksheet[addr]
+      if (!cell || cell.v === '' || cell.v === null || cell.v === undefined) continue
+      let parsedDate = null
+      if (cell.v instanceof Date && !Number.isNaN(cell.v.getTime())) {
+        parsedDate = cell.v
+      } else if (typeof cell.v === 'string') {
+        parsedDate = parseCreatedAtValue(cell.v)
+      } else if (typeof cell.v === 'number') {
+        const excelEpoch = Date.UTC(1899, 11, 30)
+        const millis = excelEpoch + cell.v * 86400000
+        parsedDate = parseCreatedAtValue(new Date(millis))
+      }
+      if (!parsedDate || Number.isNaN(parsedDate.getTime())) continue
+      const serial = excelSerialFromDate(parsedDate)
+      cell.v = serial
+      cell.t = 'n'
+      cell.z = format
+    }
+  }, [parseCreatedAtValue])
+
+  const exportToWorkbook = React.useCallback((records, modeLabel) => {
+    if (!records.length) return
+    const workbook = XLSX.utils.book_new()
+    const worksheet = XLSX.utils.json_to_sheet(records)
+    applyDateFormatToSheet(worksheet, 'created_at', 'dd/mm/yyyy')
+    applyDateFormatToSheet(worksheet, 'celebration_date', 'dd/mm/yyyy')
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Datos')
+    const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    const url = URL.createObjectURL(blob)
+    const timestamp = new Date().toISOString().replace(/[:T]/g, '-').split('.')[0]
+    const filename = `export_${modeLabel}_${timestamp}.xlsx`
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(url)
+  }, [applyDateFormatToSheet])
+
+  const handleExportConfirm = React.useCallback(async ({ mode, clientValues }) => {
+    if (exporting) return
+    setExportError('')
+    setExporting(true)
+    try {
+      let records = []
+      if (mode === 'all') {
+        records = await fetchRecordsForExport(ALL_CLIENTS)
+      } else {
+        const uniqueClients = Array.from(new Set((clientValues || []).filter(Boolean)))
+        if (!uniqueClients.length) {
+          throw new Error('Selecciona al menos un cliente para exportar.')
+        }
+        const aggregated = []
+        for (const value of uniqueClients) {
+          const batch = await fetchRecordsForExport(value)
+          aggregated.push(...batch)
+        }
+        records = aggregated
+      }
+      if (!records.length) {
+        toast('No se encontraron registros para exportar', { icon: 'ℹ️' })
+        return
+      }
+      const normalized = records.map(normalizeRecordForExport)
+      exportToWorkbook(normalized, mode === 'all' ? 'todos' : 'clientes')
+      toast.success('Exportación generada correctamente')
+      setExportOpen(false)
+    } catch (err) {
+      console.error('[EXPORT] error', err)
+      setExportError(err?.message || 'Ocurrió un error durante la exportación.')
+    } finally {
+      setExporting(false)
+    }
+  }, [exporting, fetchRecordsForExport, normalizeRecordForExport, exportToWorkbook])
+
+  const openExportDialog = React.useCallback(() => {
+    setExportError('')
+    setExportOpen(true)
+  }, [])
+
+  const closeExportDialog = React.useCallback(() => {
+    if (exporting) return
+    setExportError('')
+    setExportOpen(false)
+  }, [exporting])
 
   const removeSelected = React.useCallback(async () => {
     if (!selectedIds.size) return
@@ -821,6 +1063,7 @@ export default function Sheet() {
           <ClientFilter large value={clientFilter} options={clientFilterOptions} onChange={setClientFilter} disabled={createOpen} />
           <div className="sheet-header-actions">
             <span className="sheet-count-pill">{filteredRows.length} registros</span>
+            <Button variant="outline" onClick={openExportDialog}>Exportar</Button>
             <Button onClick={addRow} className="bg-black text-white hover:bg-neutral-900">Agregar fila</Button>
           </div>
         </div>
@@ -1116,6 +1359,15 @@ export default function Sheet() {
             setBriefSending(false)
           }
         }}
+      />
+      <ExportDialog
+        open={exportOpen}
+        clients={exportClientOptions}
+        defaultClientValue={defaultExportClientValue}
+        exporting={exporting}
+        error={exportError}
+        onClose={closeExportDialog}
+        onConfirm={handleExportConfirm}
       />
     </div>
   )

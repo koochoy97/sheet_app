@@ -3,6 +3,7 @@ export const STATUS_OPTIONS = [
   'No show',
   'Pactada',
   'Reprogramada',
+  'KDM Interesado',
 ]
 
 export const COLUMNS = [
