@@ -114,7 +114,9 @@ export function useNocoDB({ baseUrl, ALL }) {
       try {
         const headers = { 'Accept-Profile': 'core' }
         console.log('[REST][CLIENTS][GET] request', { url: CLIENTS_URL, headers })
-        const res = await fetch(CLIENTS_URL, { headers, signal: controller.signal })
+        const url = new URL(CLIENTS_URL)
+        url.searchParams.set('status', 'neq.archived')
+        const res = await fetch(url.toString(), { headers, signal: controller.signal })
         if (!res.ok) return
         const data = await res.json().catch(() => [])
         console.log('[REST][CLIENTS][GET] response', data)
