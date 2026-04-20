@@ -1,4 +1,5 @@
 import React from 'react'
+import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react'
 import { Button } from './ui/button'
 
 const formatValue = (value) => {
@@ -57,6 +58,8 @@ export default function BriefDialog({
   onClose,
   onConfirm,
   sending = false,
+  sendingStep = '',
+  onCancelSend,
   error = '',
   responseMessage = '',
 }) {
@@ -105,114 +108,126 @@ export default function BriefDialog({
     setShowDetails(false)
   }, [row])
 
-  if (!open || !row) return null
+  if (!row) return null
   const emailsLabel = formatEmails(row.AE_mails)
   const showResponse = Boolean(responseMessage && !error)
   const responseText = formatResponseMessage(responseMessage)
 
   return (
-    <div className="brief-dialog-overlay" role="dialog" aria-modal="true">
-      <div className="brief-dialog">
-        <header className="brief-dialog__header">
-          <h3>Enviar brief</h3>
-          <button type="button" className="brief-dialog__close" onClick={onClose} aria-label="Cerrar">×</button>
-        </header>
-        <div className="brief-dialog__body">
-          {!showResponse && (
-            <>
-              <h4 className="brief-dialog__heading">
-                Se enviará un correo a{' '}
-                {emailsLabel ? (
-                  <span className="brief-dialog__emails">{emailsLabel}</span>
-                ) : (
-                  <span className="brief-dialog__placeholder">—</span>
-                )}
-              </h4>
-              <p className="brief-dialog__intro">Revisa la información antes de enviar:</p>
-              <dl className="brief-dialog__summary">
-                {fieldBuckets.primary.map(field => {
-                  const value = formatValue(row[field.key])
-                  return (
-                    <React.Fragment key={field.key}>
-                      <dt>{field.label}</dt>
-                      <dd>{value || <span className="brief-dialog__placeholder">—</span>}</dd>
-                    </React.Fragment>
-                  )
-                })}
-              </dl>
-              {fieldBuckets.extra.length > 0 && (
-                <div className="brief-dialog__extra">
-                  <button
-                    type="button"
-                    className="brief-dialog__toggle"
-                    onClick={() => setShowDetails(prev => !prev)}
-                  >
-                    {showDetails ? 'Ocultar detalles' : 'Mostrar más detalles'}
-                  </button>
-                  {showDetails && (
-                    <dl className="brief-dialog__summary brief-dialog__summary--extra">
-                      {fieldBuckets.extra.map(field => {
-                        const value = formatValue(row[field.key])
-                        return (
-                          <React.Fragment key={field.key}>
-                            <dt>{field.label}</dt>
-                            <dd>{value || <span className="brief-dialog__placeholder">—</span>}</dd>
-                          </React.Fragment>
-                        )
-                      })}
-                    </dl>
+    <Dialog open={open} onClose={sending ? () => {} : onClose} className="relative z-[1200]">
+      {/* Overlay */}
+      <div className="fixed inset-0 bg-gray-900/40" aria-hidden="true" />
+      {/* Center panel */}
+      <div className="fixed inset-0 flex items-center justify-center p-6">
+        <DialogPanel className="w-full max-w-xl rounded-xl bg-white shadow-2xl border border-gray-100 grid grid-rows-[auto_1fr_auto] max-h-[calc(100vh-48px)]">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <DialogTitle className="text-[15px] font-semibold text-gray-900 tracking-tight">Enviar brief</DialogTitle>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Cerrar"
+              className="flex items-center justify-center w-7 h-7 rounded-md text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-colors border-0 bg-transparent text-lg"
+            >
+              ×
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="px-6 py-5 overflow-auto grid gap-4">
+            {!showResponse && (
+              <>
+                <p className="text-sm text-gray-600 m-0">
+                  Se enviará un correo a{' '}
+                  {emailsLabel ? (
+                    <span className="font-semibold text-gray-900">{emailsLabel}</span>
+                  ) : (
+                    <span className="text-gray-400">—</span>
                   )}
-                </div>
-              )}
-              {row.clientContactWarning && (
-                <p className="brief-dialog__warning">{row.clientContactWarning}</p>
-              )}
-            </>
-          )}
-          {error && <p className="brief-dialog__error">{error}</p>}
-          {showResponse && (
-            <div className="brief-dialog__response">
-              {structuredResponse ? (
-                structuredResponse.map((item, index) => (
-                  <div key={index} className="brief-dialog__response-item">
-                    {item.heading && (
-                      <h3 className="brief-dialog__response-heading">
-                        {item.heading}
-                      </h3>
-                    )}
-                    {item.link && (
-                      <p className="brief-dialog__response-link">
-                        <a
-                          href={item.link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="brief-dialog__response-anchor"
-                        >
-                          Ver Brief
-                        </a>
-                      </p>
+                </p>
+                <p className="text-[13px] text-gray-400 m-0 -mt-2">Revisa la información antes de enviar:</p>
+                <dl className="grid gap-y-2.5 m-0" style={{ gridTemplateColumns: 'minmax(0,180px) 1fr', fontSize: 13, lineHeight: '1.5' }}>
+                  {fieldBuckets.primary.map(field => {
+                    const value = formatValue(row[field.key])
+                    return (
+                      <React.Fragment key={field.key}>
+                        <dt className="font-medium text-gray-500">{field.label}</dt>
+                        <dd className="m-0 text-gray-900 font-medium">{value || <span className="text-gray-300">—</span>}</dd>
+                      </React.Fragment>
+                    )
+                  })}
+                </dl>
+                {fieldBuckets.extra.length > 0 && (
+                  <div className="mt-1 grid gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowDetails(prev => !prev)}
+                      className="border border-gray-200 rounded-full px-3 py-1 text-[12px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 hover:border-gray-300 self-start transition-colors"
+                    >
+                      {showDetails ? 'Ocultar detalles' : 'Mostrar más detalles'}
+                    </button>
+                    {showDetails && (
+                      <dl className="grid gap-y-2.5 m-0 mt-1" style={{ gridTemplateColumns: 'minmax(0,180px) 1fr', fontSize: 13, lineHeight: '1.5' }}>
+                        {fieldBuckets.extra.map(field => {
+                          const value = formatValue(row[field.key])
+                          return (
+                            <React.Fragment key={field.key}>
+                              <dt className="font-medium text-gray-500">{field.label}</dt>
+                              <dd className="m-0 text-gray-900 font-medium">{value || <span className="text-gray-300">—</span>}</dd>
+                            </React.Fragment>
+                          )
+                        })}
+                      </dl>
                     )}
                   </div>
-                ))
-              ) : (
-                <pre>{responseText}</pre>
-              )}
-            </div>
-          )}
-        </div>
-        <footer className="brief-dialog__actions">
-          <Button
-            onClick={onConfirm}
-            disabled={sending || Boolean(error) || showResponse}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            {sending ? 'Enviando…' : 'Confirmar envío'}
-          </Button>
-          <Button variant="ghost" onClick={onClose} disabled={sending}>
-            {showResponse ? 'Cerrar' : 'Cancelar'}
-          </Button>
-        </footer>
+                )}
+                {row.clientContactWarning && (
+                  <p className="m-0 px-3 py-2 rounded-lg bg-amber-50 text-amber-800 text-[13px]">{row.clientContactWarning}</p>
+                )}
+              </>
+            )}
+            {error && <p className="m-0 px-3 py-2 rounded-lg bg-red-50 text-red-700 text-[13px]">{error}</p>}
+            {showResponse && (
+              <div>
+                {structuredResponse ? (
+                  structuredResponse.map((item, index) => (
+                    <div key={index} className="mb-3 last:mb-0">
+                      {item.heading && (
+                        <h3 className="m-0 mb-1 text-[15px] font-semibold text-gray-900">{item.heading}</h3>
+                      )}
+                      {item.link && (
+                        <p className="m-0">
+                          <a href={item.link} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline font-medium text-sm">
+                            Ver Brief
+                          </a>
+                        </p>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <pre className="text-sm text-gray-700 whitespace-pre-wrap">{responseText}</pre>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100">
+            <Button
+              onClick={onConfirm}
+              disabled={sending || Boolean(error) || showResponse}
+            >
+              {sending ? (sendingStep || 'Enviando…') : 'Confirmar envío'}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={sending ? onCancelSend : onClose}
+            >
+              {showResponse ? 'Cerrar' : sending ? 'Cancelar' : 'Cancelar'}
+            </Button>
+          </div>
+        </DialogPanel>
       </div>
-    </div>
+    </Dialog>
   )
 }

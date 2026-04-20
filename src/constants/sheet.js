@@ -18,6 +18,7 @@ export const COLUMNS = [
   { key: 'empleados', label: '# Empleados' },
   { key: 'score', label: 'Score' },
   { key: 'lineaNegocio', label: 'Línea de negocio' },
+  { key: 'icp_id', label: 'ICP' },
   { key: 'feedback', label: 'Feedback' },
   { key: 'company_linkedin', label: 'LinkedIn empresa' },
   { key: 'person_linkedin', label: 'LinkedIn persona' },

@@ -1,13 +1,50 @@
-export function buildNocoUrl(baseUrl, { clientFilter, ALL }) {
-  const u = new URL(baseUrl)
-  u.searchParams.append('order', 'id.desc')
-  u.searchParams.set('archived', 'eq.false')
-  if (clientFilter && clientFilter !== ALL) {
-    const numericId = Number(clientFilter)
-    if (Number.isFinite(numericId)) {
-      u.searchParams.set('client_id', `eq.${numericId}`)
-    }
+const API_KEY = import.meta.env.VITE_SIETE_API_KEY
+const BASE_URL = import.meta.env.VITE_SIETE_API_URL || 'https://apirest.wearesiete.com'
+
+function apiHeaders() {
+  return {
+    'x-api-key': API_KEY,
+    'Content-Type': 'application/json',
   }
+}
+
+export function buildMeetingsUrl({ clientFilter, ALL } = {}) {
+  const u = new URL(`${BASE_URL}/prospection/siete_service_meetings/`)
+  // Filtering by BIGINT/BOOLEAN columns via query params causes 500 on the backend,
+  // so we only use TEXT-safe filters here and filter the rest client-side.
+  u.searchParams.set('order_by', 'id')
+  u.searchParams.set('order', 'desc')
+  u.searchParams.set('limit', '5000')
+  return u
+}
+
+export function buildClientsUrl() {
+  const u = new URL(`${BASE_URL}/core/clientes/`)
+  u.searchParams.set('status.neq', 'archived')
+  u.searchParams.set('fields', 'id,cliente,status,SDR,SDR Mail,Team Lead,Team Lead Mail')
+  u.searchParams.set('order_by', 'cliente')
+  u.searchParams.set('order', 'asc')
+  u.searchParams.set('limit', '500')
+  return u
+}
+
+export function buildClientIcpUrl(clientId) {
+  const u = new URL(`${BASE_URL}/core/clientes_icp/`)
+  const numericId = Number(clientId)
+  if (Number.isFinite(numericId)) {
+    u.searchParams.set('client_id', String(numericId))
+  }
+  u.searchParams.set('limit', '500')
+  return u
+}
+
+export function buildClientLinesUrl(clientFilter) {
+  const u = new URL(`${BASE_URL}/core/clientes_lineas_negocio/`)
+  const numericId = Number(clientFilter)
+  if (Number.isFinite(numericId)) {
+    u.searchParams.set('client_id', String(numericId))
+  }
+  u.searchParams.set('limit', '500')
   return u
 }
 
@@ -49,6 +86,7 @@ export function mapRecordToRow(rec) {
     person_linkedin: rec.person_linkedin ?? rec.personLinkedin ?? '',
     web_url: rec.web_url ?? rec.webUrl ?? '',
     comments: rec.comments ?? rec.comment ?? '',
+    icp_id: rec.icp_id ?? rec.icpId ?? null,
     AE_mails: aeMails,
     archived: Boolean(rec.archived ?? rec.Archived ?? false),
     cliente: rec.client ?? '',
@@ -119,26 +157,17 @@ function normalizeTextArray(value) {
 
 export { normalizeLineaNegocio, normalizeTextArray }
 
-export async function updateNocoRecord(baseUrl, token, recordId, payload, signal) {
+export async function updateNocoRecord(recordId, payload, signal) {
   if (recordId == null) throw new Error('Missing recordId')
   const numericId = typeof recordId === 'number' ? recordId : Number(recordId)
   if (!Number.isFinite(numericId)) throw new Error('Invalid recordId')
-  const u = new URL(baseUrl)
-  u.searchParams.set('id', `eq.${numericId}`)
 
+  const url = `${BASE_URL}/prospection/siete_service_meetings/${numericId}`
   const body = normalizePayloadForApi(payload)
 
-  const headers = {
-    'Content-Profile': 'prospection',
-    'Content-Type': 'application/json',
-    Prefer: 'return=representation',
-  }
-
-  console.log('[REST][PATCH] request', { url: u.toString(), headers, body })
-
-  const res = await fetch(u.toString(), {
+  const res = await fetch(url, {
     method: 'PATCH',
-    headers,
+    headers: apiHeaders(),
     body: JSON.stringify(body),
     signal,
   })
@@ -150,58 +179,70 @@ export async function updateNocoRecord(baseUrl, token, recordId, payload, signal
   return res.json().catch(() => ({}))
 }
 
-export async function createNocoRecord(baseUrl, token, payload, signal) {
-  const u = new URL(baseUrl)
-  const headers = {
-    'Content-Profile': 'prospection',
-    'Content-Type': 'application/json',
-    Prefer: 'return=representation',
-  }
+export async function createNocoRecord(payload, signal) {
+  const url = `${BASE_URL}/prospection/siete_service_meetings/`
   const body = normalizePayloadForApi(payload)
-  console.log('[REST][POST] request', { url: u.toString(), headers, body })
-  const res = await fetch(u.toString(), {
+
+  const res = await fetch(url, {
     method: 'POST',
-    headers,
+    headers: apiHeaders(),
     body: JSON.stringify(body),
     signal,
   })
-  console.log('[REST][POST] status', res.status)
   if (!res.ok) {
     let info = ''
     try { info = await res.text() } catch {}
     throw new Error(`Create failed HTTP ${res.status}${info ? `: ${info}` : ''}`)
   }
   const data = await res.json().catch(() => ({}))
-  console.log('[REST][POST] response', data)
   const rec = Array.isArray(data) ? data[0] : data
   return rec
 }
 
-export async function archiveNocoRecords(baseUrl, token, ids, signal) {
+export async function archiveNocoRecords(ids, signal) {
   const numericIds = (ids || []).map(id => typeof id === 'number' ? id : Number(id)).filter(id => Number.isFinite(id))
   if (!numericIds.length) return { ok: true, archived: 0 }
-  const u = new URL(baseUrl)
-  u.searchParams.set('id', `in.(${numericIds.join(',')})`)
-  const headers = {
-    'Content-Profile': 'prospection',
-    'Content-Type': 'application/json',
-    Prefer: 'return=representation',
-  }
-  const body = JSON.stringify({ archived: true })
-  console.log('[REST][ARCHIVE] request', { url: u.toString(), headers, body })
-  const res = await fetch(u.toString(), {
-    method: 'PATCH',
-    headers,
-    body,
-    signal,
-  })
-  console.log('[REST][ARCHIVE] status', res.status)
-  if (!res.ok) {
-    let info = ''
-    try { info = await res.text() } catch {}
-    throw new Error(`Archive failed HTTP ${res.status}${info ? `: ${info}` : ''}`)
+
+  const results = await Promise.all(
+    numericIds.map(id => {
+      const url = `${BASE_URL}/prospection/siete_service_meetings/${id}`
+      return fetch(url, {
+        method: 'PATCH',
+        headers: apiHeaders(),
+        body: JSON.stringify({ archived: true }),
+        signal,
+      })
+    })
+  )
+
+  for (const res of results) {
+    if (!res.ok) {
+      let info = ''
+      try { info = await res.text() } catch {}
+      throw new Error(`Archive failed HTTP ${res.status}${info ? `: ${info}` : ''}`)
+    }
   }
   return { ok: true, archived: numericIds.length }
+}
+
+export async function fetchMeetings({ clientFilter, ALL } = {}, signal) {
+  const url = buildMeetingsUrl({ clientFilter, ALL })
+  const res = await fetch(url.toString(), {
+    headers: { 'x-api-key': API_KEY },
+    signal,
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const data = await res.json().catch(() => [])
+  const list = Array.isArray(data) ? data : []
+  // Filter client-side since backend 500s on BIGINT/BOOLEAN filters
+  return list.filter(rec => {
+    if (rec.archived) return false
+    if (clientFilter && clientFilter !== ALL) {
+      const numericFilter = Number(clientFilter)
+      if (Number.isFinite(numericFilter) && rec.client_id !== numericFilter) return false
+    }
+    return true
+  })
 }
 
 function normalizePayloadForApi(payload = {}) {
