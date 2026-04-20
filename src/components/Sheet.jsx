@@ -8,13 +8,14 @@ import SheetTable from './SheetTable'
 import DateFilter from './DateFilter'
 import { useNocoDB } from '../hooks/useNocoDB'
 import { COLUMNS as columns, ALL_CLIENTS, STATUS_OPTIONS } from '../constants/sheet'
-import { createNocoRecord, archiveNocoRecords, mapRecordToRow, normalizeTextArray, updateNocoRecord, buildNocoUrl } from '../services/nocodb'
+import { createNocoRecord, archiveNocoRecords, mapRecordToRow, normalizeTextArray, updateNocoRecord, fetchMeetings } from '../services/nocodb'
 import CreateSlide from './CreateSlide'
 import BriefDialog from './BriefDialog'
 import ExportDialog from './ExportDialog'
+import { scrapeWebPage } from '../services/scraper'
 
-const READ_BASE_URL = 'https://rest.wearesiete.com/siete_service_meetings'
-const WRITE_BASE_URL = READ_BASE_URL
+const BRIEF_WEBHOOK_URL = import.meta.env.VITE_BRIEF_WEBHOOK_URL
+const BRIEF_WEBHOOK_SHADOW_URL = import.meta.env.VITE_BRIEF_WEBHOOK_SHADOW_URL
 
 const REQUIRED_FIELDS = [
   { key: 'company', label: 'Company' },
@@ -29,6 +30,7 @@ const REQUIRED_FIELDS = [
   { key: 'web_url', label: 'Web' },
   { key: 'comments', label: 'Comentarios' },
   { key: 'AE_mails', label: 'AE mails' },
+  { key: 'icp_id', label: 'ICP' },
 ]
 
 const BRIEF_FIELDS = [
@@ -52,6 +54,7 @@ const BRIEF_FIELDS = [
   { key: 'AE_mails', label: 'AE mails' },
   { key: 'clientSdrDisplay', label: 'SDR - SDR Mail' },
   { key: 'clientTeamLeadDisplay', label: 'Team Lead - Team Lead Mail' },
+  { key: 'icpDisplay', label: 'ICP' },
 ]
 
 const BRIEF_REQUIRED_FOR_SEND = [
@@ -66,9 +69,9 @@ const BRIEF_REQUIRED_FOR_SEND = [
   { key: 'kdm', label: 'Puesto KDM' },
   { key: 'person_linkedin', label: 'LinkedIn persona' },
   { key: 'comments', label: 'Comentario' },
+  { key: 'icp_id', label: 'ICP' },
 ]
 
-const BRIEF_WEBHOOK_URL = 'https://n8n.wearesiete.com/webhook/f98f5529-8ee3-4dda-be59-51a0991e8b2d'
 
 const CONTACT_WARNING_MESSAGE = 'No se encontró información de SDR/Team Lead para este cliente. Revisa la carga de clientes en el schema core.'
 
@@ -179,8 +182,7 @@ function toCSV(rows) {
 }
 
 export default function Sheet() {
-  const { rows, setRows, loading, clients, clientFilter, setClientFilter, defaultClientId, clientLines } = useNocoDB({
-    baseUrl: READ_BASE_URL,
+  const { rows, setRows, loading, clients, clientFilter, setClientFilter, defaultClientId, clientLines, clientIcps } = useNocoDB({
     ALL: ALL_CLIENTS,
   })
 
@@ -192,6 +194,7 @@ export default function Sheet() {
   const [createSaving, setCreateSaving] = React.useState(false)
   const [createForm, setCreateForm] = React.useState({
     company: '',
+    icp_id: null,
     fecha: '',
     status: '',
     kdm: '',
@@ -220,8 +223,10 @@ export default function Sheet() {
   const [briefOpen, setBriefOpen] = React.useState(false)
   const [briefRow, setBriefRow] = React.useState(null)
   const [briefSending, setBriefSending] = React.useState(false)
+  const [briefSendingStep, setBriefSendingStep] = React.useState('')
   const [briefError, setBriefError] = React.useState('')
   const [briefResponse, setBriefResponse] = React.useState('')
+  const briefAbortRef = React.useRef(null)
   const initialClientRef = React.useRef(true)
   const [exportOpen, setExportOpen] = React.useState(false)
   const [exporting, setExporting] = React.useState(false)
@@ -424,8 +429,11 @@ export default function Sheet() {
       uniqueLineaLabels.push(trimmed)
     }
     const lineaNegocioDisplay = uniqueLineaLabels.join(', ')
+    const icpMatch = clientIcps.find(icp => icp.id === row.icp_id)
+    const icpDisplay = icpMatch ? icpMatch.nombre : ''
     const briefData = {
       ...row,
+      icpDisplay,
       cliente: trimmedCliente || rawCliente,
       AE_mails: Array.isArray(row.AE_mails) ? row.AE_mails : sanitizeTextArray(row.AE_mails),
       lineaNegocioDisplay,
@@ -442,8 +450,13 @@ export default function Sheet() {
     setBriefRow(briefData)
     setBriefOpen(true)
     setSelectionLocked(true)
-    const hasEmails = Array.isArray(briefData.AE_mails) ? briefData.AE_mails.length > 0 : Boolean(briefData.AE_mails)
-    setBriefError(hasEmails ? '' : 'Falta completar AE mails antes de enviar')
+    const missingOnOpen = BRIEF_REQUIRED_FOR_SEND.filter(field => {
+      const value = briefData[field.key]
+      if (Array.isArray(value)) return value.length === 0
+      if (value === null || value === undefined) return true
+      return typeof value === 'string' ? value.trim() === '' : false
+    })
+    setBriefError(missingOnOpen.length ? `Completa los campos obligatorios: ${missingOnOpen.map(f => f.label).join(', ')}` : '')
     setBriefResponse('')
   }
 
@@ -582,17 +595,10 @@ export default function Sheet() {
   }, [])
 
   const fetchRecordsForExport = React.useCallback(async (clientValue) => {
-    const url = buildNocoUrl(READ_BASE_URL, {
+    const list = await fetchMeetings({
       clientFilter: clientValue ?? ALL_CLIENTS,
       ALL: ALL_CLIENTS,
     })
-    const headers = { 'Accept-Profile': 'prospection' }
-    const res = await fetch(url.toString(), { headers })
-    if (!res.ok) {
-      throw new Error(`Error HTTP ${res.status} al consultar registros`)
-    }
-    const data = await res.json().catch(() => [])
-    const list = Array.isArray(data) ? data : []
     return filterArchivedRecords(list)
   }, [filterArchivedRecords])
 
@@ -722,7 +728,6 @@ export default function Sheet() {
       toast.success('Exportación generada correctamente')
       setExportOpen(false)
     } catch (err) {
-      console.error('[EXPORT] error', err)
       setExportError(err?.message || 'Ocurrió un error durante la exportación.')
     } finally {
       setExporting(false)
@@ -744,23 +749,17 @@ export default function Sheet() {
     if (!selectedIds.size) return
     try {
       setSelectionLocked(true)
-      const token = import.meta.env.VITE_NOCODB_TOKEN
-      if (!token) {
-        toast.error('Falta token de autenticación')
-        return
-      }
       const rowsToArchive = rows.filter(r => selectedIds.has(r.id))
       const ids = rowsToArchive
         .map(r => (typeof r.recordId === 'number' ? r.recordId : (typeof r.id === 'number' ? r.id : Number(r.recordId))))
         .filter(id => Number.isFinite(id))
       if (ids.length) {
-        await archiveNocoRecords(WRITE_BASE_URL, token, ids)
+        await archiveNocoRecords(ids)
       }
       setRows(prev => prev.filter(r => !selectedIds.has(r.id)))
       setSelectedIds(new Set())
       toast.success('Archivado correctamente')
     } catch (e) {
-      console.warn('[REST][ARCHIVE] error', e)
       toast.error(`Error al archivar: ${e?.message || 'fallo'}`)
     } finally {
       setSelectionLocked(false)
@@ -848,7 +847,6 @@ export default function Sheet() {
           snap.set(`${r.id}:${c.key}`, normalize(c.key, r[c.key]))
         }
       }
-      console.log('[snapshot] initialized with', snap.size, 'entries')
       lastSaved.current = snap
     }
     prevLoading.current = loading
@@ -863,11 +861,6 @@ export default function Sheet() {
     const recordId = typeof recordIdRaw === 'number' ? recordIdRaw : Number(recordIdRaw)
     if (!Number.isFinite(recordId)) {
       toast.error('Registro sin Id válido')
-      return
-    }
-    const token = import.meta.env.VITE_NOCODB_TOKEN
-    if (!token) {
-      toast.error('Falta token de autenticación')
       return
     }
     const baseClientId = row.clientId ?? clientIdMap.get(row.cliente) ?? null
@@ -918,6 +911,7 @@ export default function Sheet() {
       case 'comments': payload.comments = value ?? '' ; break
       case 'AE_mails': payload.AE_mails = sanitizeTextArray(value) ; break
       case 'lineaNegocio': payload.lineas_negocio_ids = sanitizeLineaNegocio(Array.isArray(value) ? value : []) ; break
+      case 'icp_id': payload.icp_id = value ?? null ; break
       default: break
     }
     let clientSelection = resolveClientSelection(payload.client)
@@ -930,18 +924,12 @@ export default function Sheet() {
       payload.client_id = row.clientId
     }
     const pendingKey = `${row.id}:${key}`
-    try {
-      console.log('[Sheet][PATCH][payload]', JSON.stringify(payload, null, 2))
-    } catch (e) {
-      console.log('[Sheet][PATCH][payload]', payload)
-    }
     setPending(prev => new Set(prev).add(pendingKey))
     try {
-      await updateNocoRecord(WRITE_BASE_URL, token, recordId, payload)
+      await updateNocoRecord(recordId, payload)
       lastSaved.current.set(mapKey, normVal)
       toast.success(`Guardado OK (${key})`)
     } catch (e) {
-      console.warn('[NocoDB][PATCH] error', e)
       toast.error(`Error (${key}): ${e?.message || 'fallo'}`)
     } finally {
       setPending(prev => {
@@ -1022,6 +1010,23 @@ export default function Sheet() {
     return { lineOptionsByClient: normalizedClientMap, lineLabelLookup: labelMap }
   }, [clientLines])
 
+  const knownEmails = React.useMemo(() => {
+    const EXTRACT_RE = /<([^>]+@[^>]+)>/
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    const set = new Set()
+    for (const r of rows) {
+      const mails = Array.isArray(r.AE_mails) ? r.AE_mails : []
+      for (const m of mails) {
+        if (typeof m !== 'string') continue
+        const trimmed = m.trim()
+        const match = trimmed.match(EXTRACT_RE)
+        const email = match ? match[1].toLowerCase().trim() : trimmed.toLowerCase()
+        if (email && EMAIL_RE.test(email)) set.add(email)
+      }
+    }
+    return Array.from(set).sort()
+  }, [rows])
+
   const createClientId = React.useMemo(() => {
     const { id } = resolveClientSelection(createForm.cliente)
     if (id != null) return id
@@ -1065,7 +1070,7 @@ export default function Sheet() {
           <div className="sheet-header-actions">
             <span className="sheet-count-pill">{filteredRows.length} registros</span>
             <Button variant="outline" onClick={openExportDialog}>Exportar</Button>
-            <Button onClick={addRow} className="bg-black text-white hover:bg-neutral-900">Agregar fila</Button>
+            <Button onClick={addRow}>+ Agregar</Button>
           </div>
         </div>
         <div className="sheet-header-row sheet-header-row--filters">
@@ -1121,7 +1126,7 @@ export default function Sheet() {
           <Button variant="outline" onClick={openBrief} disabled={selectionLocked}>Enviar brief</Button>
         )}
         {selectedIds.size > 0 && (
-          <Button variant="default" className="bg-rose-100 text-rose-800 border border-rose-200 hover:bg-rose-100/80" onClick={removeSelected} disabled={selectionLocked}>
+          <Button variant="outline" className="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300" onClick={removeSelected} disabled={selectionLocked}>
             Eliminar seleccionados ({selectedIds.size})
           </Button>
         )}
@@ -1133,13 +1138,7 @@ export default function Sheet() {
         loading={loading}
         onCellChange={updateCell}
         onCellBlur={handleCellBlur}
-        onCellClick={row => {
-          try {
-            console.log('[cell-click]', JSON.stringify(row, null, 2))
-          } catch {
-            console.log('[cell-click]', row)
-          }
-        }}
+        onCellClick={() => {}}
         selectedIds={selectedIds}
         onToggleRow={toggleRow}
         onToggleAll={toggleAll}
@@ -1153,6 +1152,8 @@ export default function Sheet() {
         pending={pending}
         clientLineMap={lineOptionsByClient}
         lineLabelLookup={lineLabelLookup}
+        knownEmails={knownEmails}
+        icpOptions={clientIcps}
       />
       <Toaster position="top-right" toastOptions={{ duration: 2000 }} />
 
@@ -1162,6 +1163,8 @@ export default function Sheet() {
           errors={createErrors}
           requiredFields={REQUIRED_FIELDS.map(f => f.key)}
           lineaOptions={createLineaOptions}
+          knownEmails={knownEmails}
+          icpOptions={clientIcps}
           onChange={(key, val) => {
             setCreateForm(v => ({ ...v, [key]: val }))
             setCreateErrors(prev => {
@@ -1176,8 +1179,6 @@ export default function Sheet() {
             if (!validateCreateForm()) return
             try {
               setCreateSaving(true)
-              const token = import.meta.env.VITE_NOCODB_TOKEN
-              const baseUrl = WRITE_BASE_URL
               const { label: resolvedLabel, id: resolvedId } = resolveClientSelection(createForm.cliente)
               if (!resolvedLabel) {
                 toast.error('Selecciona un cliente antes de guardar')
@@ -1213,8 +1214,7 @@ export default function Sheet() {
               delete sanitizedPayload.id
               delete sanitizedPayload.recordId
               delete sanitizedPayload.record_id
-              console.log('[Sheet][CREATE][payload]', JSON.stringify(sanitizedPayload, null, 2))
-              const rec = await createNocoRecord(baseUrl, token, sanitizedPayload)
+              const rec = await createNocoRecord(sanitizedPayload)
               const row = mapRecordToRow(rec ?? { ...sanitizedPayload, id: null })
               setRows(prev => [row, ...prev])
               // clear any selection after successful create
@@ -1260,28 +1260,14 @@ export default function Sheet() {
         row={briefRow}
         fields={BRIEF_FIELDS}
         sending={briefSending}
+        sendingStep={briefSendingStep}
+        onCancelSend={() => briefAbortRef.current?.abort()}
         error={briefError}
         responseMessage={briefResponse}
         onClose={closeBrief}
         onConfirm={async () => {
           if (!briefRow) return
-          const missingRequired = BRIEF_REQUIRED_FOR_SEND.filter(field => {
-            const value = briefRow[field.key]
-            if (Array.isArray(value)) return value.length === 0
-            if (value === null || value === undefined) return true
-            const str = typeof value === 'string' ? value : String(value)
-            return str.trim() === ''
-          })
-          if (missingRequired.length) {
-            setBriefError(`Completa los campos obligatorios: ${missingRequired.map(f => f.label).join(', ')}`)
-            setBriefResponse('')
-            return
-          }
           const emails = Array.isArray(briefRow.AE_mails) ? briefRow.AE_mails : normalizeTextArray(briefRow.AE_mails)
-          if (!emails.length) {
-            setBriefError('Falta completar AE mails antes de enviar')
-            return
-          }
           const { id: resolvedClientId } = resolveClientSelection(briefRow.cliente)
           let briefClientId = resolvedClientId ?? null
           if (briefClientId == null) {
@@ -1327,16 +1313,46 @@ export default function Sheet() {
             ae_mails: emails,
             lineaNegocio: lineaNegocioNames,
             client_id: briefClientId,
+            team_lead: briefRow.clientTeamLead ?? '',
+            team_lead_mail: briefRow.clientTeamLeadMail ?? '',
+            icp_id: briefRow.icp_id ?? null,
+            icp_nombre: briefRow.icpDisplay ?? '',
+            icp_description: (() => {
+              const icp = clientIcps.find(i => i.id === briefRow.icp_id)
+              return icp?.icp_description ?? ''
+            })(),
             timestamp: new Date().toISOString(),
           }
           try {
+            const abortController = new AbortController()
+            briefAbortRef.current = abortController
             setBriefSending(true)
             setBriefError('')
             setBriefResponse('')
+
+            // Scrape the company web page before sending
+            if (payload.web_url) {
+              setBriefSendingStep('Leyendo página web…')
+              try {
+                payload.web_content = await scrapeWebPage(payload.web_url, { signal: abortController.signal })
+              } catch (scrapeErr) {
+                if (scrapeErr.name === 'AbortError') throw scrapeErr
+                console.warn('[scraper] failed:', scrapeErr.message)
+                payload.web_content = ''
+              }
+            }
+
+            setBriefSendingStep('Enviando brief…')
+            if (BRIEF_WEBHOOK_SHADOW_URL) fetch(BRIEF_WEBHOOK_SHADOW_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            }).catch(() => {})
             const res = await fetch(BRIEF_WEBHOOK_URL, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload),
+              signal: abortController.signal,
             })
             if (!res.ok) {
               let info = ''
@@ -1345,19 +1361,22 @@ export default function Sheet() {
             }
             try {
               const text = await res.text()
-              console.log('[Brief][POST] response', text)
               setBriefResponse(text || 'Brief enviado correctamente.')
             } catch (e) {
-              console.log('[Brief][POST] response unreadable', e)
               setBriefResponse('Brief enviado correctamente.')
             }
             toast.success(`Brief enviado para ${briefRow.company || 'registro'}`)
           } catch (err) {
-            console.warn('[Brief][POST] error', err)
-            setBriefError(`No se pudo enviar el brief: ${err?.message || 'fallo'}`)
+            if (err.name === 'AbortError') {
+              setBriefError('')
+            } else {
+              setBriefError(`No se pudo enviar el brief: ${err?.message || 'fallo'}`)
+            }
             setBriefResponse('')
           } finally {
             setBriefSending(false)
+            setBriefSendingStep('')
+            briefAbortRef.current = null
           }
         }}
       />

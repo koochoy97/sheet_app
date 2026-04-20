@@ -6,3 +6,8 @@ dist/
 yarn-*.log*
 npm-*.log*
 pnpm-*.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local

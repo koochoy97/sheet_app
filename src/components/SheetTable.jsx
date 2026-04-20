@@ -3,8 +3,10 @@ import { Input } from './ui/input'
 import { Textarea } from './ui/textarea'
 import { STATUS_OPTIONS } from '../constants/sheet'
 import LineaNegocioDropdown, { sanitizeLineaValues } from './LineaNegocioDropdown'
+import IcpDropdown from './IcpDropdown'
 import { normalizeTextArray } from '../services/nocodb'
 import CommentPreview from './CommentPreview'
+import EmailTagInput from './EmailTagInput'
 
 const sanitizeMailValues = (value) => {
   if (Array.isArray(value)) return normalizeTextArray(value)
@@ -45,6 +47,8 @@ export default function SheetTable({
   pending = new Set(),
   clientLineMap = new Map(),
   lineLabelLookup = new Map(),
+  knownEmails = [],
+  icpOptions = [],
 }) {
   // Track value at focus-time per cell to decide if blur should trigger save
   const focusValuesRef = React.useRef(new Map())
@@ -126,7 +130,7 @@ export default function SheetTable({
                 </td>
                 {columns.map(col => (
                   <td key={col.key}>
-                    {renderCell(row, col, onCellChange, onCellBlur, onCellClick, pending, setFocusVal, changedSinceFocus, clientLineMap, lineLabelLookup, disableSelection)}
+                    {renderCell(row, col, onCellChange, onCellBlur, onCellClick, pending, setFocusVal, changedSinceFocus, clientLineMap, lineLabelLookup, disableSelection, knownEmails, icpOptions)}
                   </td>
                 ))}
               </tr>
@@ -138,7 +142,7 @@ export default function SheetTable({
   )
 }
 
-function renderCell(row, col, onCellChange, onCellBlur, onCellClick, pending, setFocusVal, changedSinceFocus, clientLineMap, lineLabelLookup, disableSelection) {
+function renderCell(row, col, onCellChange, onCellBlur, onCellClick, pending, setFocusVal, changedSinceFocus, clientLineMap, lineLabelLookup, disableSelection, knownEmails, icpOptions) {
   const change = (val) => onCellChange(row.id, col.key, val)
   const isPending = pending.has(`${row.id}:${col.key}`)
   const wrap = (child) => (
@@ -161,7 +165,7 @@ function renderCell(row, col, onCellChange, onCellBlur, onCellClick, pending, se
       return wrap(
         <input
           type="date"
-          className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+          className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-sm text-gray-900 focus:outline-none focus:border-gray-400"
           value={row.fecha || ''}
           onChange={e => {
             const v = e.target.value
@@ -233,7 +237,6 @@ function renderCell(row, col, onCellChange, onCellBlur, onCellClick, pending, se
           disabled={disableSelection}
           onOpen={() => {
             setFocusVal(row.id, col.key, sanitizedSelected)
-            console.log('[SheetTable] dropdown open', { rowId: row.id, clientId: row.clientId, options: options.length })
           }}
           onSelectionChange={(next) => {
             const sanitized = sanitizeLineaValues(next)
@@ -241,8 +244,20 @@ function renderCell(row, col, onCellChange, onCellBlur, onCellClick, pending, se
           }}
           onCommit={(next) => {
             const sanitized = sanitizeLineaValues(next)
-            console.log('[SheetTable] commit lineaNegocio', { rowId: row.id, values: sanitized })
             triggerBlur(sanitized)
+          }}
+        />
+      )
+    }
+    case 'icp_id': {
+      return wrap(
+        <IcpDropdown
+          value={row.icp_id ?? null}
+          options={icpOptions}
+          disabled={disableSelection}
+          onChange={(id) => {
+            change(id)
+            triggerBlur(id)
           }}
         />
       )
@@ -323,23 +338,20 @@ function renderCell(row, col, onCellChange, onCellBlur, onCellClick, pending, se
         />
       )
     case 'AE_mails': {
-      const draft = toMailDraftArray(row.AE_mails)
+      const mailValues = sanitizeMailValues(row.AE_mails)
       return wrap(
-        <Textarea
-          value={draft.join('\n')}
-          onChange={e => {
-            const nextDraft = toMailDraftArray(e.target.value)
-            change(nextDraft)
+        <EmailTagInput
+          values={mailValues}
+          suggestions={knownEmails}
+          disabled={disableSelection}
+          onChange={(next) => {
+            change(next)
+            if (onCellBlur) onCellBlur(row, col.key, next)
           }}
-          onFocus={() => setFocusVal(row.id, col.key, draft)}
-          onBlur={e => {
-            const nextDraft = toMailDraftArray(e.target.value)
-            const sanitized = sanitizeMailValues(nextDraft)
-            change(sanitized)
+          onBlur={() => {
+            const sanitized = sanitizeMailValues(row.AE_mails)
             triggerBlur(sanitized)
           }}
-          placeholder="Un correo por línea"
-          rows={3}
         />
       )
     }

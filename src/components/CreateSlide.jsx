@@ -4,8 +4,11 @@ import { Input } from './ui/input'
 import { Textarea } from './ui/textarea'
 import { STATUS_OPTIONS } from '../constants/sheet'
 import LineaNegocioDropdown from './LineaNegocioDropdown'
+import IcpDropdown from './IcpDropdown'
+import EmailTagInput from './EmailTagInput'
 
-const errorClasses = 'border-rose-500 focus-visible:ring-rose-500 focus-visible:ring-offset-0'
+const errorClasses = 'border-rose-400 focus-visible:border-rose-400'
+const fieldBase = 'w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900 transition-colors focus-visible:outline-none focus-visible:border-gray-400'
 
 export default function CreateSlide({
   values,
@@ -16,6 +19,8 @@ export default function CreateSlide({
   errors = {},
   requiredFields = [],
   lineaOptions = [],
+  knownEmails = [],
+  icpOptions = [],
 }) {
   const requiredSet = React.useMemo(() => new Set(requiredFields), [requiredFields])
 
@@ -63,7 +68,7 @@ export default function CreateSlide({
             </span>
             <input
               type="date"
-              className={`w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 ${errors.fecha ? errorClasses : ''}`.trim()}
+              className={`${fieldBase} ${errors.fecha ? errorClasses : ''}`.trim()}
               value={values.fecha}
               onChange={e => onChange('fecha', e.target.value)}
               onFocus={e => { if (e.target.showPicker) e.target.showPicker() }}
@@ -75,7 +80,7 @@ export default function CreateSlide({
           <label className={errors.status ? 'text-rose-700' : undefined}>
             {renderLabel('Status', 'status')}
             <select
-              className={`w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 ${errors.status ? errorClasses : ''}`.trim()}
+              className={`${fieldBase} ${errors.status ? errorClasses : ''}`.trim()}
               value={values.status}
               onChange={e => onChange('status', e.target.value)}
               aria-invalid={Boolean(errors.status)}
@@ -212,18 +217,30 @@ export default function CreateSlide({
             />
             {errors.comments && <FieldError message={errors.comments} />}
           </label>
-          <label className={errors.AE_mails ? 'text-rose-700' : undefined}>
+          <div className={errors.AE_mails ? 'text-rose-700' : undefined}>
             {renderLabel('AE mails', 'AE_mails')}
-            <Textarea
-              value={Array.isArray(values.AE_mails) ? values.AE_mails.join('\n') : (values.AE_mails || '')}
-              onChange={e => onChange('AE_mails', e.target.value)}
-              rows={3}
-              aria-invalid={Boolean(errors.AE_mails)}
-              className={errors.AE_mails ? errorClasses : undefined}
-              placeholder="Un correo por línea"
+            <EmailTagInput
+              values={Array.isArray(values.AE_mails) ? values.AE_mails : (values.AE_mails ? values.AE_mails.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean) : [])}
+              suggestions={knownEmails}
+              onChange={(next) => onChange('AE_mails', next)}
+              disabled={saving}
+              error={Boolean(errors.AE_mails)}
+              placeholder="Agregar correo…"
             />
             {errors.AE_mails && <FieldError message={errors.AE_mails} />}
-          </label>
+          </div>
+          <div className={`field-group ${errors.icp_id ? 'text-rose-700' : ''}`}>
+            <span className="flex items-center gap-1">
+              {renderLabel('ICP', 'icp_id')}
+            </span>
+            <IcpDropdown
+              value={values.icp_id ?? null}
+              options={icpOptions}
+              disabled={saving}
+              onChange={(id) => onChange('icp_id', id)}
+            />
+            {errors.icp_id && <FieldError message={errors.icp_id} />}
+          </div>
           <div className={`field-group ${errors.lineaNegocio ? 'text-rose-700' : ''}`}>
             <span className="flex items-center gap-1">
               {renderLabel('Línea de negocio', 'lineaNegocio')}
@@ -233,37 +250,18 @@ export default function CreateSlide({
               values={values.lineaNegocio || []}
               options={lineaOptions}
               disabled={saving}
-              onOpen={() => {
-                try {
-                  console.log('[CreateSlide] dropdown open', { options: lineaOptions.length, cliente: values.cliente })
-                } catch {}
-              }}
+              onOpen={() => {}}
               onSelectionChange={(next) => onChange('lineaNegocio', next)}
-              onCommit={(next) => {
-                onChange('lineaNegocio', next)
-                try {
-                  console.log('[CreateSlide] dropdown commit', { values: next })
-                } catch {}
-              }}
+              onCommit={(next) => onChange('lineaNegocio', next)}
             />
             {errors.lineaNegocio && <FieldError message={errors.lineaNegocio} />}
           </div>
         </div>
         <div className="slide-footer">
-          <Button
-            variant="default"
-            className="bg-emerald-100 text-emerald-800 border border-emerald-200 hover:bg-emerald-100/80"
-            onClick={onSave}
-            disabled={saving}
-          >
+          <Button onClick={onSave} disabled={saving}>
             {saving ? 'Guardando…' : 'Guardar'}
           </Button>
-          <Button
-            variant="default"
-            className="bg-rose-100 text-rose-800 border border-rose-200 hover:bg-rose-100/80"
-            onClick={handleClose}
-            disabled={saving}
-          >
+          <Button variant="outline" onClick={handleClose} disabled={saving}>
             Cancelar
           </Button>
         </div>
