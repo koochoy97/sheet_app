@@ -1,12 +1,23 @@
 import React from 'react'
 import { Input } from './ui/input'
 import { Textarea } from './ui/textarea'
-import { STATUS_OPTIONS } from '../constants/sheet'
+import { STATUS_OPTIONS, SCORE_OPTIONS, ACCEPTANCE_OPTIONS } from '../constants/sheet'
 import LineaNegocioDropdown, { sanitizeLineaValues } from './LineaNegocioDropdown'
 import IcpDropdown from './IcpDropdown'
 import { normalizeTextArray } from '../services/nocodb'
 import CommentPreview from './CommentPreview'
 import EmailTagInput from './EmailTagInput'
+
+// Deriva "Nombre Apellido" desde un email tipo nombre.apellido@dominio.com
+const nameFromEmail = (email) => {
+  if (!email || !email.includes('@')) return email || ''
+  const local = email.split('@')[0]
+  return local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ')
+}
 
 const sanitizeMailValues = (value) => {
   if (Array.isArray(value)) return normalizeTextArray(value)
@@ -159,6 +170,16 @@ function renderCell(row, col, onCellChange, onCellBlur, onCellClick, pending, se
     const changed = changedSinceFocus(row.id, col.key, value)
     if (changed && onCellBlur) onCellBlur(row, col.key, value)
     if (onCellClick) onCellClick(row)
+  }
+  if (col.readOnly) {
+    const raw = row[col.key]
+    const text = raw ? String(raw).trim() : ''
+    const display = col.key === 'created_by_email' ? nameFromEmail(text) : text
+    return (
+      <div className="readonly-cell" title={text || undefined}>
+        {display || <span className="readonly-cell__empty">—</span>}
+      </div>
+    )
   }
   switch (col.key) {
     case 'fecha':
@@ -328,15 +349,48 @@ function renderCell(row, col, onCellChange, onCellBlur, onCellClick, pending, se
       return wrap(<Input value={row.cliente || ''} disabled onBlur={() => triggerBlur(row.cliente || '')} />)
     case 'score':
       return wrap(
-        <Input
-          type="number"
-          value={row.score === 0 ? 0 : (row.score || '')}
-          onChange={e => change(e.target.value)}
+        <select
+          className="cell-select"
+          value={row.score === 0 ? '0' : (row.score ?? '') === '' ? '' : String(row.score)}
+          onChange={e => {
+            const v = e.target.value
+            change(v)
+            triggerBlur(v)
+            setFocusVal(row.id, col.key, v)
+          }}
           onFocus={e => setFocusVal(row.id, col.key, e.target.value)}
           onBlur={e => { const v = e.target.value; triggerBlur(v) }}
           data-colkey="score"
-        />
+        >
+          <option value="">—</option>
+          {SCORE_OPTIONS.map(n => <option key={n} value={String(n)}>{n}</option>)}
+          {/* Valor histórico fuera de rango: se muestra pero no está en las opciones */}
+          {row.score !== '' && row.score != null && !SCORE_OPTIONS.includes(Number(row.score)) && (
+            <option value={String(row.score)}>{row.score}</option>
+          )}
+        </select>
       )
+    case 'client_accepted': {
+      const cur = row.client_accepted
+      const val = cur === true ? 'true' : cur === false ? 'false' : ''
+      return wrap(
+        <select
+          className={`cell-select acceptance-select acceptance-${val || 'empty'}`}
+          value={val}
+          onChange={e => {
+            const v = e.target.value
+            change(v)
+            triggerBlur(v)
+            setFocusVal(row.id, col.key, v)
+          }}
+          onFocus={e => setFocusVal(row.id, col.key, e.target.value)}
+          onBlur={e => { const v = e.target.value; triggerBlur(v) }}
+        >
+          <option value="">—</option>
+          {ACCEPTANCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      )
+    }
     case 'AE_mails': {
       const mailValues = sanitizeMailValues(row.AE_mails)
       return wrap(

@@ -81,6 +81,7 @@ export function mapRecordToRow(rec) {
     industria: rec.industry ?? '',
     empleados: rec.employers_quantity ?? '',
     score: typeof rec.score === 'number' ? rec.score : (rec.score ?? ''),
+    client_accepted: rec.client_accepted ?? rec.clientAccepted ?? null,
     feedback: rec.feedback ?? '',
     company_linkedin: rec.company_linkedin ?? rec.companyLinkedin ?? '',
     person_linkedin: rec.person_linkedin ?? rec.personLinkedin ?? '',
@@ -92,6 +93,7 @@ export function mapRecordToRow(rec) {
     cliente: rec.client ?? '',
     lineaNegocio,
     created_at: rec?.created_at ?? rec?.createdAt ?? '',
+    created_by_email: rec?.created_by_email ?? rec?.createdByEmail ?? '',
   }
 }
 

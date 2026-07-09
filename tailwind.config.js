@@ -8,9 +8,22 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+        sans: ['Montserrat', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
       },
       colors: {
+        // Escala de marca SIETE — azul iOS #007AFF (portada de la app Forms)
+        brand: {
+          50: '#EAF3FF',
+          100: '#D4E7FF',
+          200: '#A9CEFF',
+          300: '#8FBDFF',
+          400: '#4DA0FF',
+          500: '#007AFF',
+          600: '#0062CC',
+          700: '#004C9E',
+          800: '#003A78',
+          900: '#001B3A',
+        },
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
@@ -45,6 +58,10 @@ export default {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
+        pill: '33px',
+      },
+      boxShadow: {
+        card: '0 10px 30px rgba(0,0,0,0.05)',
       },
       keyframes: {
         'accordion-down': {

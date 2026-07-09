@@ -12,6 +12,7 @@ import { createNocoRecord, archiveNocoRecords, mapRecordToRow, normalizeTextArra
 import CreateSlide from './CreateSlide'
 import BriefDialog from './BriefDialog'
 import ExportDialog from './ExportDialog'
+import ConfirmRescheduleDialog from './ConfirmRescheduleDialog'
 import { scrapeWebPage } from '../services/scraper'
 
 const BRIEF_WEBHOOK_URL = import.meta.env.VITE_BRIEF_WEBHOOK_URL
@@ -136,6 +137,14 @@ const sanitizeLineaNegocio = (value) => {
   return normalized
 }
 
+// Normaliza el valor de aceptación del cliente a boolean o null (sin marcar).
+// Acepta boolean, o el string 'true'/'false'/'' que viene del dropdown.
+const toAcceptanceBool = (value) => {
+  if (value === true || value === 'true') return true
+  if (value === false || value === 'false') return false
+  return null
+}
+
 const sanitizeTextArray = (value) => {
   if (Array.isArray(value)) return normalizeTextArray(value)
   if (typeof value === 'string') return normalizeTextArray(value)
@@ -181,7 +190,7 @@ function toCSV(rows) {
   return lines.map(a => a.join(',')).join('\n')
 }
 
-export default function Sheet() {
+export default function Sheet({ currentUserEmail = '' }) {
   const { rows, setRows, loading, clients, clientFilter, setClientFilter, defaultClientId, clientLines, clientIcps } = useNocoDB({
     ALL: ALL_CLIENTS,
   })
@@ -504,6 +513,8 @@ export default function Sheet() {
     if (key === 'score') {
       v = value === '' || value === null || value === undefined ? '' : Number(value)
       if (!Number.isFinite(v)) v = ''
+    } else if (key === 'client_accepted') {
+      v = toAcceptanceBool(value)
     } else if (key === 'lineaNegocio') {
       v = sanitizeLineaNegocio(Array.isArray(value) ? value : [])
     } else if (key === 'AE_mails') {
@@ -827,6 +838,10 @@ export default function Sheet() {
       const n = Number(val)
       return Number.isFinite(n) ? n : val
     }
+    if (key === 'client_accepted') {
+      const b = toAcceptanceBool(val)
+      return b === null ? '' : String(b)
+    }
     if (key === 'lineaNegocio') {
       const sanitized = sanitizeLineaNegocio(Array.isArray(val) ? val : [])
       return JSON.stringify(sanitized)
@@ -852,7 +867,7 @@ export default function Sheet() {
     prevLoading.current = loading
   }, [loading, rows])
 
-  const handleCellBlur = React.useCallback(async (row, key, value) => {
+  const commitCellBlur = React.useCallback(async (row, key, value) => {
     const mapKey = `${row.id}:${key}`
     const normVal = normalize(key, value)
     const saved = lastSaved.current.get(mapKey)
@@ -876,6 +891,7 @@ export default function Sheet() {
       industry: row.industria ?? '',
       employers_quantity: row.empleados ?? '',
       score: row.score === '' ? null : (row.score ?? null),
+      client_accepted: toAcceptanceBool(row.client_accepted),
       feedback: row.feedback ?? '',
       company_linkedin: row.company_linkedin ?? '',
       person_linkedin: row.person_linkedin ?? '',
@@ -912,6 +928,7 @@ export default function Sheet() {
       case 'AE_mails': payload.AE_mails = sanitizeTextArray(value) ; break
       case 'lineaNegocio': payload.lineas_negocio_ids = sanitizeLineaNegocio(Array.isArray(value) ? value : []) ; break
       case 'icp_id': payload.icp_id = value ?? null ; break
+      case 'client_accepted': payload.client_accepted = toAcceptanceBool(value) ; break
       default: break
     }
     let clientSelection = resolveClientSelection(payload.client)
@@ -939,6 +956,35 @@ export default function Sheet() {
       })
     }
   }, [normalize, clientIdMap])
+
+  // Reprogramada requires explicit confirmation before saving (feeds reschedule metric)
+  const [rescheduleConfirm, setRescheduleConfirm] = React.useState(null)
+  const handleCellBlur = React.useCallback(async (row, key, value) => {
+    if (key === 'status' && value === 'Reprogramada') {
+      const saved = lastSaved.current.get(`${row.id}:status`)
+      if (saved !== normalize('status', value)) {
+        setRescheduleConfirm({ row, value })
+        return
+      }
+    }
+    return commitCellBlur(row, key, value)
+  }, [commitCellBlur, normalize])
+
+  const cancelReschedule = React.useCallback(() => {
+    setRescheduleConfirm(prev => {
+      if (prev) {
+        const savedStatus = lastSaved.current.get(`${prev.row.id}:status`) ?? ''
+        updateCell(prev.row.id, 'status', savedStatus)
+      }
+      return null
+    })
+  }, [])
+
+  const confirmReschedule = React.useCallback(async () => {
+    const target = rescheduleConfirm
+    setRescheduleConfirm(null)
+    if (target) await commitCellBlur(target.row, 'status', target.value)
+  }, [rescheduleConfirm, commitCellBlur])
 
   // Sync client filter with URL ?client=...
   React.useEffect(() => {
@@ -1209,6 +1255,7 @@ export default function Sheet() {
                 client_id: resolvedId,
                 lineas_negocio_ids: sanitizeLineaNegocio(createForm.lineaNegocio || []),
                 archived: false,
+                created_by_email: currentUserEmail || null,
               }
               const sanitizedPayload = { ...payload }
               delete sanitizedPayload.id
@@ -1379,6 +1426,12 @@ export default function Sheet() {
             briefAbortRef.current = null
           }
         }}
+      />
+      <ConfirmRescheduleDialog
+        open={!!rescheduleConfirm}
+        company={rescheduleConfirm?.row?.company || ''}
+        onCancel={cancelReschedule}
+        onConfirm={confirmReschedule}
       />
       <ExportDialog
         open={exportOpen}

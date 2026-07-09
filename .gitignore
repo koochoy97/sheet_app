@@ -11,3 +11,6 @@ pnpm-*.log*
 .env
 .env.local
 .env.*.local
+
+# Claude Code local config
+.claude/

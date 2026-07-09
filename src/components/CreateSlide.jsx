@@ -2,7 +2,7 @@ import React from 'react'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Textarea } from './ui/textarea'
-import { STATUS_OPTIONS } from '../constants/sheet'
+import { STATUS_OPTIONS, SCORE_OPTIONS } from '../constants/sheet'
 import LineaNegocioDropdown from './LineaNegocioDropdown'
 import IcpDropdown from './IcpDropdown'
 import EmailTagInput from './EmailTagInput'
@@ -154,15 +154,17 @@ export default function CreateSlide({
             {errors.empleados && <FieldError message={errors.empleados} />}
           </label>
           <label className={errors.score ? 'text-rose-700' : undefined}>
-            {renderLabel('Score', 'score')}
-            <Input
-              type="number"
-              value={values.score}
+            {renderLabel('Score de Reu (Según Cliente)', 'score')}
+            <select
+              className={`cell-select ${errors.score ? errorClasses : ''}`}
+              value={values.score === 0 ? '0' : (values.score ?? '') === '' ? '' : String(values.score)}
               onChange={e => onChange('score', e.target.value)}
               data-colkey="score"
               aria-invalid={Boolean(errors.score)}
-              className={errors.score ? errorClasses : undefined}
-            />
+            >
+              <option value="">—</option>
+              {SCORE_OPTIONS.map(n => <option key={n} value={String(n)}>{n}</option>)}
+            </select>
             {errors.score && <FieldError message={errors.score} />}
           </label>
           <label className={errors.feedback ? 'text-rose-700' : undefined}>

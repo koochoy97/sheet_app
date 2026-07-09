@@ -1,12 +1,14 @@
 import React from 'react'
 import { cn } from '../../lib/utils'
 
+// Estilo SIETE (portado de Forms): botones tipo "pill" muy redondeados,
+// azul #007AFF, tipografía Montserrat semibold.
 const variants = {
-  default: 'bg-slate-900 text-white hover:bg-slate-800 border-transparent',
-  secondary: 'bg-gray-100 text-gray-900 hover:bg-gray-200 border-transparent',
-  outline: 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-300',
-  destructive: 'bg-red-600 text-white hover:bg-red-700 border-transparent',
-  ghost: 'border-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-900',
+  default: 'bg-brand-500 text-white hover:bg-brand-600 border-transparent shadow-sm',
+  secondary: 'bg-muted text-foreground hover:bg-brand-50 border-transparent',
+  outline: 'border-2 border-brand-500 bg-white text-brand-600 hover:bg-brand-50',
+  destructive: 'bg-red-600 text-white hover:bg-red-700 border-transparent shadow-sm',
+  ghost: 'border-transparent text-brand-600 hover:bg-brand-50',
 }
 
 export function Button({ className, variant = 'default', asChild = false, ...props }) {
@@ -14,7 +16,7 @@ export function Button({ className, variant = 'default', asChild = false, ...pro
   return (
     <Comp
       className={cn(
-        'inline-flex items-center justify-center whitespace-nowrap rounded-md border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-1 disabled:pointer-events-none disabled:opacity-50',
+        'inline-flex items-center justify-center whitespace-nowrap rounded-full border px-5 py-2 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
         variants[variant] || variants.default,
         className
       )}

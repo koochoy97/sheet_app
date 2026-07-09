@@ -4,15 +4,21 @@ import Login from './components/Login.jsx'
 import { Button } from './components/ui/button'
 import { auth } from './firebase.js'
 import {
-  signInWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup,
   setPersistence,
   browserLocalPersistence,
   onAuthStateChanged,
   signOut,
 } from 'firebase/auth'
 
+const ALLOWED_DOMAIN = 'wearesiete.com'
+const isAllowedEmail = (email) =>
+  typeof email === 'string' && email.toLowerCase().endsWith(`@${ALLOWED_DOMAIN}`)
+
 export default function App() {
   const [authenticated, setAuthenticated] = React.useState(false)
+  const [user, setUser] = React.useState(null)
   const [loginPending, setLoginPending] = React.useState(false)
   const [loginError, setLoginError] = React.useState('')
   const [initializing, setInitializing] = React.useState(true)
@@ -26,6 +32,16 @@ export default function App() {
         console.warn('[Auth] persistence setup failed', err)
       }
       unsubscribe = onAuthStateChanged(auth, (user) => {
+        if (user && !isAllowedEmail(user.email)) {
+          // Persisted session from a non-Siete account: reject and sign out.
+          signOut(auth).catch(() => {})
+          setAuthenticated(false)
+          setUser(null)
+          setLoginError(`Solo cuentas @${ALLOWED_DOMAIN} tienen acceso.`)
+          setInitializing(false)
+          return
+        }
+        setUser(user)
         setAuthenticated(Boolean(user))
         setInitializing(false)
       })
@@ -36,41 +52,35 @@ export default function App() {
     }
   }, [])
 
-  const handleLogin = React.useCallback(async ({ email, password }) => {
-    if (!email || !password) {
-      setLoginError('Completa ambos campos para iniciar sesión.')
-      return
-    }
-    const trimmedEmail = email.trim()
-    const trimmedPassword = password.trim()
-    if (!trimmedEmail || !trimmedPassword) {
-      setLoginError('Completa ambos campos para iniciar sesión.')
-      return
-    }
+  const handleLogin = React.useCallback(async () => {
     try {
       setLoginError('')
       setLoginPending(true)
-      await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword)
+      const provider = new GoogleAuthProvider()
+      // Hint Google's account chooser toward the Siete Workspace.
+      provider.setCustomParameters({ hd: ALLOWED_DOMAIN, prompt: 'select_account' })
+      const { user } = await signInWithPopup(auth, provider)
+      if (!isAllowedEmail(user?.email)) {
+        await signOut(auth)
+        setAuthenticated(false)
+        setLoginError(`Solo cuentas @${ALLOWED_DOMAIN} tienen acceso.`)
+        return
+      }
       setAuthenticated(true)
     } catch (err) {
       console.warn('[Login] error', err)
       const code = err?.code ?? ''
-      if (typeof code === 'string') {
-        switch (code) {
-          case 'auth/invalid-credential':
-          case 'auth/wrong-password':
-          case 'auth/user-not-found':
-            setLoginError('Credenciales inválidas. Revisa tu correo y contraseña.')
-            break
-          case 'auth/too-many-requests':
-            setLoginError('Demasiados intentos. Intenta nuevamente más tarde.')
-            break
-          default:
-            setLoginError('No se pudo iniciar sesión. Intenta nuevamente.')
-            break
-        }
-      } else {
-        setLoginError('No se pudo iniciar sesión. Intenta nuevamente.')
+      switch (code) {
+        case 'auth/popup-closed-by-user':
+        case 'auth/cancelled-popup-request':
+          setLoginError('')
+          break
+        case 'auth/popup-blocked':
+          setLoginError('El navegador bloqueó la ventana. Habilita los pop-ups e intenta de nuevo.')
+          break
+        default:
+          setLoginError('No se pudo iniciar sesión con Google. Intenta nuevamente.')
+          break
       }
     } finally {
       setLoginPending(false)
@@ -102,24 +112,33 @@ export default function App() {
       console.warn('[Logout] error', err)
     } finally {
       setAuthenticated(false)
+      setUser(null)
       setLoginError('')
     }
   }
+
+  const displayName =
+    user?.displayName?.split(' ')[0] ||
+    user?.email?.split('@')[0] ||
+    ''
 
   return (
     <div className="app">
       <div className="sheet-container">
         <div className="sheet-heading-row">
           <h1 className="sheet-heading">Registro de reuniones obtenidas</h1>
-          <Button
-            variant="outline"
-            className="logout-button"
-            onClick={handleLogout}
-          >
-            Cerrar sesión
-          </Button>
+          <div className="header-user">
+            {displayName && <span className="header-greeting">Hola {displayName}</span>}
+            <Button
+              variant="outline"
+              className="logout-button"
+              onClick={handleLogout}
+            >
+              Cerrar sesión
+            </Button>
+          </div>
         </div>
-        <Sheet />
+        <Sheet currentUserEmail={user?.email || ''} />
       </div>
     </div>
   )
