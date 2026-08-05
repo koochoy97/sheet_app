@@ -82,6 +82,14 @@ export function mapRecordToRow(rec) {
     empleados: rec.employers_quantity ?? '',
     score: typeof rec.score === 'number' ? rec.score : (rec.score ?? ''),
     client_accepted: rec.client_accepted ?? rec.clientAccepted ?? null,
+    is_sql: rec.is_sql ?? rec.isSql ?? null,
+    deal_status: rec.deal_status ?? rec.dealStatus ?? null,
+    // "Cliente cerrado" deriva de deal_status: won = sí, cualquier otro valor = no, null = sin marcar
+    cliente_cerrado: (() => {
+      const ds = rec.deal_status ?? rec.dealStatus ?? null
+      if (ds == null || ds === '') return null
+      return ds === 'won'
+    })(),
     feedback: rec.feedback ?? '',
     company_linkedin: rec.company_linkedin ?? rec.companyLinkedin ?? '',
     person_linkedin: rec.person_linkedin ?? rec.personLinkedin ?? '',

@@ -3,6 +3,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Textarea } from './ui/textarea'
 import { STATUS_OPTIONS, SCORE_OPTIONS } from '../constants/sheet'
+import Dropdown from './ui/Dropdown'
 import LineaNegocioDropdown from './LineaNegocioDropdown'
 import IcpDropdown from './IcpDropdown'
 import EmailTagInput from './EmailTagInput'
@@ -79,15 +80,13 @@ export default function CreateSlide({
           </div>
           <label className={errors.status ? 'text-rose-700' : undefined}>
             {renderLabel('Status', 'status')}
-            <select
-              className={`${fieldBase} ${errors.status ? errorClasses : ''}`.trim()}
+            <Dropdown
+              ariaLabel="Status"
+              placeholder="Seleccionar"
               value={values.status}
-              onChange={e => onChange('status', e.target.value)}
-              aria-invalid={Boolean(errors.status)}
-            >
-              <option value="">Seleccionar</option>
-              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+              options={STATUS_OPTIONS}
+              onChange={v => onChange('status', v)}
+            />
             {errors.status && <FieldError message={errors.status} />}
           </label>
           <label className={errors.kdm ? 'text-rose-700' : undefined}>
@@ -155,16 +154,13 @@ export default function CreateSlide({
           </label>
           <label className={errors.score ? 'text-rose-700' : undefined}>
             {renderLabel('Score de Reu (Según Cliente)', 'score')}
-            <select
-              className={`cell-select ${errors.score ? errorClasses : ''}`}
+            <Dropdown
+              ariaLabel="Score de Reu"
+              placeholder="—"
               value={values.score === 0 ? '0' : (values.score ?? '') === '' ? '' : String(values.score)}
-              onChange={e => onChange('score', e.target.value)}
-              data-colkey="score"
-              aria-invalid={Boolean(errors.score)}
-            >
-              <option value="">—</option>
-              {SCORE_OPTIONS.map(n => <option key={n} value={String(n)}>{n}</option>)}
-            </select>
+              options={SCORE_OPTIONS.map(n => ({ value: String(n), label: String(n) }))}
+              onChange={v => onChange('score', v)}
+            />
             {errors.score && <FieldError message={errors.score} />}
           </label>
           <label className={errors.feedback ? 'text-rose-700' : undefined}>

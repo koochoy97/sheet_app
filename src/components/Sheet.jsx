@@ -13,6 +13,7 @@ import CreateSlide from './CreateSlide'
 import BriefDialog from './BriefDialog'
 import ExportDialog from './ExportDialog'
 import ConfirmRescheduleDialog from './ConfirmRescheduleDialog'
+import Dropdown from './ui/Dropdown'
 import { scrapeWebPage } from '../services/scraper'
 
 const BRIEF_WEBHOOK_URL = import.meta.env.VITE_BRIEF_WEBHOOK_URL
@@ -137,11 +138,19 @@ const sanitizeLineaNegocio = (value) => {
   return normalized
 }
 
-// Normaliza el valor de aceptación del cliente a boolean o null (sin marcar).
+// Normaliza un valor sí/no a boolean o null (sin marcar).
 // Acepta boolean, o el string 'true'/'false'/'' que viene del dropdown.
 const toAcceptanceBool = (value) => {
   if (value === true || value === 'true') return true
   if (value === false || value === 'false') return false
+  return null
+}
+
+// "Cliente cerrado" (sí/no) ⇄ deal_status. Sí = 'won', No = 'lost', sin marcar = null.
+const clienteCerradoToDealStatus = (value) => {
+  const b = toAcceptanceBool(value)
+  if (b === true) return 'won'
+  if (b === false) return 'lost'
   return null
 }
 
@@ -513,7 +522,7 @@ export default function Sheet({ currentUserEmail = '' }) {
     if (key === 'score') {
       v = value === '' || value === null || value === undefined ? '' : Number(value)
       if (!Number.isFinite(v)) v = ''
-    } else if (key === 'client_accepted') {
+    } else if (key === 'client_accepted' || key === 'is_sql' || key === 'cliente_cerrado') {
       v = toAcceptanceBool(value)
     } else if (key === 'lineaNegocio') {
       v = sanitizeLineaNegocio(Array.isArray(value) ? value : [])
@@ -838,7 +847,7 @@ export default function Sheet({ currentUserEmail = '' }) {
       const n = Number(val)
       return Number.isFinite(n) ? n : val
     }
-    if (key === 'client_accepted') {
+    if (key === 'client_accepted' || key === 'is_sql' || key === 'cliente_cerrado') {
       const b = toAcceptanceBool(val)
       return b === null ? '' : String(b)
     }
@@ -892,6 +901,8 @@ export default function Sheet({ currentUserEmail = '' }) {
       employers_quantity: row.empleados ?? '',
       score: row.score === '' ? null : (row.score ?? null),
       client_accepted: toAcceptanceBool(row.client_accepted),
+      is_sql: toAcceptanceBool(row.is_sql),
+      deal_status: clienteCerradoToDealStatus(row.cliente_cerrado),
       feedback: row.feedback ?? '',
       company_linkedin: row.company_linkedin ?? '',
       person_linkedin: row.person_linkedin ?? '',
@@ -929,6 +940,8 @@ export default function Sheet({ currentUserEmail = '' }) {
       case 'lineaNegocio': payload.lineas_negocio_ids = sanitizeLineaNegocio(Array.isArray(value) ? value : []) ; break
       case 'icp_id': payload.icp_id = value ?? null ; break
       case 'client_accepted': payload.client_accepted = toAcceptanceBool(value) ; break
+      case 'is_sql': payload.is_sql = toAcceptanceBool(value) ; break
+      case 'cliente_cerrado': payload.deal_status = clienteCerradoToDealStatus(value) ; break
       default: break
     }
     let clientSelection = resolveClientSelection(payload.client)
@@ -1133,28 +1146,31 @@ export default function Sheet({ currentUserEmail = '' }) {
             </label>
             <label className="sheet-filter-field">
               <span>Status:</span>
-              <select
-                className="client-title-trigger status-filter-select"
+              <Dropdown
+                ariaLabel="Filtrar por status"
+                triggerClassName="dd-pill"
+                placeholder="Todos"
                 value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value)}
+                options={[{ value: '', label: 'Todos' }, ...statusOptions]}
+                onChange={setStatusFilter}
                 disabled={createOpen}
-              >
-                <option value="">Todos</option>
-                {statusOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-              </select>
+              />
             </label>
             <label className="sheet-filter-field">
               <span>Score:</span>
-              <select
-                className="client-title-trigger status-filter-select"
+              <Dropdown
+                ariaLabel="Filtrar por score"
+                triggerClassName="dd-pill"
+                placeholder="Todos"
                 value={scoreFilter}
-                onChange={e => setScoreFilter(e.target.value)}
+                options={[
+                  { value: '', label: 'Todos' },
+                  ...(scoreOptions.hasEmpty ? [{ value: 'none', label: 'Sin score' }] : []),
+                  ...scoreOptions.values.map(v => ({ value: String(v), label: String(v) })),
+                ]}
+                onChange={setScoreFilter}
                 disabled={createOpen}
-              >
-                <option value="">Todos</option>
-                {scoreOptions.hasEmpty && <option value="none">Sin score</option>}
-                {scoreOptions.values.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-              </select>
+              />
             </label>
             <div className="sheet-filter-field">
               <span>Fecha:</span>

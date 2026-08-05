@@ -2,6 +2,7 @@ import React from 'react'
 import { Input } from './ui/input'
 import { Textarea } from './ui/textarea'
 import { STATUS_OPTIONS, SCORE_OPTIONS, ACCEPTANCE_OPTIONS } from '../constants/sheet'
+import Dropdown from './ui/Dropdown'
 import LineaNegocioDropdown, { sanitizeLineaValues } from './LineaNegocioDropdown'
 import IcpDropdown from './IcpDropdown'
 import { normalizeTextArray } from '../services/nocodb'
@@ -200,25 +201,19 @@ function renderCell(row, col, onCellChange, onCellBlur, onCellClick, pending, se
           data-colkey="fecha"
         />
       )
-    case 'status':
+    case 'status': {
       const slug = statusSlug(row.status)
       return wrap(
-        <select
-          className={`status-select status-tag status-${slug}`}
+        <Dropdown
+          ariaLabel="Status"
+          placeholder="Seleccionar"
+          triggerClassName={`dd-tag status-tag status-${slug}`}
           value={row.status || ''}
-          onChange={e => {
-            const v = e.target.value
-            change(v)
-            triggerBlur(v)
-            setFocusVal(row.id, col.key, v)
-          }}
-          onFocus={e => { setFocusVal(row.id, col.key, e.target.value) }}
-          onBlur={e => { const v = e.target.value; triggerBlur(v) }}
-        >
-          <option value="">Seleccionar</option>
-          {STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-        </select>
+          options={STATUS_OPTIONS}
+          onChange={v => { change(v); triggerBlur(v) }}
+        />
       )
+    }
     case 'lineaNegocio': {
       const optionMap = new Map()
       const collectOptions = (key) => {
@@ -347,48 +342,37 @@ function renderCell(row, col, onCellChange, onCellBlur, onCellClick, pending, se
       )
     case 'cliente':
       return wrap(<Input value={row.cliente || ''} disabled onBlur={() => triggerBlur(row.cliente || '')} />)
-    case 'score':
+    case 'score': {
+      const scoreVal = row.score === 0 ? '0' : (row.score ?? '') === '' ? '' : String(row.score)
+      const scoreOpts = SCORE_OPTIONS.map(n => ({ value: String(n), label: String(n) }))
+      // Valor histórico fuera de rango: se muestra como opción extra
+      if (row.score !== '' && row.score != null && !SCORE_OPTIONS.includes(Number(row.score))) {
+        scoreOpts.push({ value: String(row.score), label: String(row.score) })
+      }
       return wrap(
-        <select
-          className="cell-select"
-          value={row.score === 0 ? '0' : (row.score ?? '') === '' ? '' : String(row.score)}
-          onChange={e => {
-            const v = e.target.value
-            change(v)
-            triggerBlur(v)
-            setFocusVal(row.id, col.key, v)
-          }}
-          onFocus={e => setFocusVal(row.id, col.key, e.target.value)}
-          onBlur={e => { const v = e.target.value; triggerBlur(v) }}
-          data-colkey="score"
-        >
-          <option value="">—</option>
-          {SCORE_OPTIONS.map(n => <option key={n} value={String(n)}>{n}</option>)}
-          {/* Valor histórico fuera de rango: se muestra pero no está en las opciones */}
-          {row.score !== '' && row.score != null && !SCORE_OPTIONS.includes(Number(row.score)) && (
-            <option value={String(row.score)}>{row.score}</option>
-          )}
-        </select>
+        <Dropdown
+          ariaLabel="Score"
+          placeholder="—"
+          value={scoreVal}
+          options={scoreOpts}
+          onChange={v => { change(v); triggerBlur(v) }}
+        />
       )
-    case 'client_accepted': {
-      const cur = row.client_accepted
+    }
+    case 'client_accepted':
+    case 'is_sql':
+    case 'cliente_cerrado': {
+      const cur = row[col.key]
       const val = cur === true ? 'true' : cur === false ? 'false' : ''
       return wrap(
-        <select
-          className={`cell-select acceptance-select acceptance-${val || 'empty'}`}
+        <Dropdown
+          ariaLabel={col.label}
+          placeholder="—"
+          triggerClassName={`dd-tag acceptance-select acceptance-${val || 'empty'}`}
           value={val}
-          onChange={e => {
-            const v = e.target.value
-            change(v)
-            triggerBlur(v)
-            setFocusVal(row.id, col.key, v)
-          }}
-          onFocus={e => setFocusVal(row.id, col.key, e.target.value)}
-          onBlur={e => { const v = e.target.value; triggerBlur(v) }}
-        >
-          <option value="">—</option>
-          {ACCEPTANCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
+          options={ACCEPTANCE_OPTIONS}
+          onChange={v => { change(v); triggerBlur(v) }}
+        />
       )
     }
     case 'AE_mails': {

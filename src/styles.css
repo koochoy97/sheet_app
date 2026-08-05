@@ -276,8 +276,8 @@ body {
 }
 .sheet-table {
   --select-col-width: 48px;
-  width: calc(var(--select-col-width) + 32ch + 16ch + 20ch + 18ch + 18ch + 20ch + 24ch + 20ch + 16ch + 20ch + 22ch + 28ch + 28ch + 28ch + 26ch + 30ch + 24ch + 24ch);
-  min-width: calc(var(--select-col-width) + 32ch + 16ch + 20ch + 18ch + 18ch + 20ch + 24ch + 20ch + 16ch + 20ch + 22ch + 28ch + 28ch + 28ch + 26ch + 30ch + 24ch + 24ch);
+  width: calc(var(--select-col-width) + 32ch + 16ch + 20ch + 18ch + 18ch + 20ch + 24ch + 20ch + 16ch + 20ch + 22ch + 10ch + 16ch + 28ch + 28ch + 28ch + 26ch + 30ch + 24ch + 24ch);
+  min-width: calc(var(--select-col-width) + 32ch + 16ch + 20ch + 18ch + 18ch + 20ch + 24ch + 20ch + 16ch + 20ch + 22ch + 10ch + 16ch + 28ch + 28ch + 28ch + 26ch + 30ch + 24ch + 24ch);
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
@@ -343,6 +343,8 @@ body {
 .sheet-table col.col-empleados { width: 16ch; }
 .sheet-table col.col-score { width: 20ch; }
 .sheet-table col.col-client_accepted { width: 22ch; }
+.sheet-table col.col-is_sql { width: 10ch; }
+.sheet-table col.col-cliente_cerrado { width: 16ch; }
 .sheet-table col.col-feedback { width: 28ch; }
 .sheet-table col.col-company_linkedin { width: 28ch; }
 .sheet-table col.col-person_linkedin { width: 28ch; }
@@ -418,6 +420,61 @@ body {
   animation: spin .7s linear infinite; pointer-events: none;
 }
 @keyframes spin { from { transform: translateY(-50%) rotate(0); } to { transform: translateY(-50%) rotate(360deg); } }
+
+/* ── Dropdown custom (reemplaza <select> nativos) ── */
+.dd { position: relative; width: 100%; }
+.dd-trigger {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  border: 1px solid #dbdbdb;
+  border-radius: 8px;
+  background: #fff;
+  color: #374151;
+  padding: 5px 9px;
+  font-size: 13px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.dd-trigger:hover:not(:disabled) { border-color: #c7c7c7; background: #fafafa; }
+.dd-trigger:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--brand-200); }
+.dd-trigger:disabled { opacity: .55; cursor: default; }
+.dd-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dd-placeholder { color: #9ca3af; }
+.dd-caret { font-size: 10px; color: #9ca3af; flex-shrink: 0; }
+.dd-menu {
+  position: fixed;
+  z-index: 1300;
+  margin: 0;
+  padding: 5px;
+  list-style: none;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #dbdbdb;
+  border-radius: 12px;
+  box-shadow: var(--shadow-pop);
+}
+.dd-option {
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #374151;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dd-option:hover { background: var(--brand-50); color: var(--brand-700); }
+.dd-option.is-selected { background: var(--brand-50); color: var(--brand-700); font-weight: 600; }
+.dd-option.is-empty { color: #9ca3af; cursor: default; }
+.dd-option.is-empty:hover { background: transparent; color: #9ca3af; }
+/* Variante pill para filtros (status, score en el header) */
+.dd-trigger.dd-pill { border-radius: 999px; padding: 6px 14px; font-weight: 500; }
+/* Trigger que lleva su propio color de fondo (status tag / aceptación) */
+.dd-trigger.dd-tag { border: none; font-weight: 500; }
 
 /* ── In-cell dropdowns (score, aceptación) ── */
 .cell-select {

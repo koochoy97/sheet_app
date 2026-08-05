@@ -19,6 +19,8 @@ export const COLUMNS = [
   { key: 'empleados', label: '# Empleados' },
   { key: 'score', label: 'Score de Reu (Según Cliente)' },
   { key: 'client_accepted', label: 'Aceptación de Reu por Cliente' },
+  { key: 'is_sql', label: 'SQL' },
+  { key: 'cliente_cerrado', label: 'Cliente cerrado' },
   { key: 'lineaNegocio', label: 'Línea de negocio' },
   { key: 'icp_id', label: 'ICP' },
   { key: 'feedback', label: 'Feedback' },
