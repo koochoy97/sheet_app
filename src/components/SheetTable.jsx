@@ -1,7 +1,7 @@
 import React from 'react'
 import { Input } from './ui/input'
 import { Textarea } from './ui/textarea'
-import { STATUS_OPTIONS, SCORE_OPTIONS, ACCEPTANCE_OPTIONS } from '../constants/sheet'
+import { STATUS_OPTIONS, SCORE_OPTIONS, ACCEPTANCE_OPTIONS, MEETING_SOURCE_OPTIONS } from '../constants/sheet'
 import Dropdown from './ui/Dropdown'
 import LineaNegocioDropdown, { sanitizeLineaValues } from './LineaNegocioDropdown'
 import IcpDropdown from './IcpDropdown'
@@ -210,6 +210,23 @@ function renderCell(row, col, onCellChange, onCellBlur, onCellClick, pending, se
           triggerClassName={`dd-tag status-tag status-${slug}`}
           value={row.status || ''}
           options={STATUS_OPTIONS}
+          onChange={v => { change(v); triggerBlur(v) }}
+        />
+      )
+    }
+    case 'meeting_source': {
+      const sourceVal = (row.meeting_source ?? '').toString()
+      const sourceOpts = [...MEETING_SOURCE_OPTIONS]
+      // Valor histórico fuera de la lista: se muestra como opción extra
+      if (sourceVal && !sourceOpts.some(o => o.value === sourceVal)) {
+        sourceOpts.push({ value: sourceVal, label: sourceVal })
+      }
+      return wrap(
+        <Dropdown
+          ariaLabel="Fuente de la Reunión"
+          placeholder="—"
+          value={sourceVal}
+          options={sourceOpts}
           onChange={v => { change(v); triggerBlur(v) }}
         />
       )

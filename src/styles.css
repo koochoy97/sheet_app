@@ -334,6 +334,7 @@ body {
 .sheet-table col.col-company { width: 32ch; }
 .sheet-table col.col-fecha { width: 20ch; }
 .sheet-table col.col-status { width: 18ch; }
+.sheet-table col.col-meeting_source { width: 20ch; }
 .sheet-table col.col-created_by_email { width: 18ch; }
 .sheet-table col.col-kdm { width: 20ch; }
 .sheet-table col.col-kdm_mail { width: 28ch; }

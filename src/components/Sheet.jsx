@@ -893,6 +893,7 @@ export default function Sheet({ currentUserEmail = '' }) {
       client: row.cliente ?? '',
       celebration_date: row.fecha ?? '',
       status: row.status ?? '',
+      meeting_source: row.meeting_source ?? '',
       kdm: row.kdm ?? '',
       kdm_mail: row.kdm_mail ?? '',
       telefono_cliente: row.telefono_cliente ?? '',
@@ -917,6 +918,7 @@ export default function Sheet({ currentUserEmail = '' }) {
       case 'cliente': payload.client = value ?? '' ; break
       case 'fecha': payload.celebration_date = value ?? '' ; break
       case 'status': payload.status = value ?? '' ; break
+      case 'meeting_source': payload.meeting_source = value ?? '' ; break
       case 'kdm': payload.kdm = value ?? '' ; break
       case 'kdm_mail': payload.kdm_mail = value ?? '' ; break
       case 'telefono_cliente': payload.telefono_cliente = value ?? '' ; break

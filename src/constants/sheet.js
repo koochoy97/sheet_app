@@ -10,6 +10,7 @@ export const COLUMNS = [
   { key: 'company', label: 'Company' },
   { key: 'fecha', label: 'Fecha de celebración' },
   { key: 'status', label: 'Status' },
+  { key: 'meeting_source', label: 'Fuente de la Reunión' },
   { key: 'created_by_email', label: 'SDR', readOnly: true },
   { key: 'kdm', label: 'KDM' },
   { key: 'tituloKdm', label: 'Título del KDM' },
@@ -29,6 +30,14 @@ export const COLUMNS = [
   { key: 'web_url', label: 'Web' },
   { key: 'comments', label: 'Comentarios' },
   { key: 'AE_mails', label: 'AE mails' },
+]
+
+// Canal por el que se originó la reunión.
+export const MEETING_SOURCE_OPTIONS = [
+  { value: 'correo', label: 'Correo' },
+  { value: 'llamada', label: 'Llamada' },
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'linkedin', label: 'LinkedIn' },
 ]
 
 // Score de calidad 0–5 (según cliente). Dropdown para evitar valores fuera de rango.
